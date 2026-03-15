@@ -194,7 +194,7 @@ ATC.config = {
 
     -- ── Menu labels ──────────────────────────────────────────
     rootMenuLabel    = "[ATC] Nearby Fields",
-    menuRefreshLabel = "  Refresh Airfield List",
+    menuRefreshLabel = "Refresh Airfield List",
 
     -- ── Scheduler ────────────────────────────────────────────
     -- How often (seconds) the proximity list is re-evaluated.
@@ -218,230 +218,9 @@ ATC.config = {
     defaultPatternAltFt = 1500,
 }
 
--- ============================================================
--- 1a.  STTS — Simple Text To Speech  (inline implementation)
--- ============================================================
--- Calls DCS-SR-ExternalAudio.exe (ships with SRS) to synthesise
--- voice over in-game radio frequencies.
--- Based on DCS-SimpleTextToSpeech by ciribob (MIT licence).
---
--- Requirement: MissionScripting.lua must be desanitized
---   (remove os/io/lfs sandbox).  Re-apply after every DCS update.
--- ============================================================
-
-STTS            = {}
-STTS.DIRECTORY  = "C:\\Program Files\\DCS-SimpleRadio-Standalone\\"
-STTS.SRS_PORT   = 5002
-STTS.EXECUTABLE = "DCS-SR-ExternalAudio.exe"
-
---- Generate a random hex string used to create unique temp-file names.
-function STTS.uuid()
-    local t = {}
-    for i = 1, 32 do t[i] = string.format("%x", math.random(0, 15)) end
-    return table.concat(t)
-end
-
---- Speak text over an SRS radio frequency.
--- @param text        string  — message to speak
--- @param freqs       string  — MHz, e.g. "251.0" or "251.0,123.4"
--- @param modulations string  — "AM" or "FM" (comma-list if multiple freqs)
--- @param volume      string  — "0.0" – "1.0"
--- @param name        string  — transmitter label shown in SRS overlay
--- @param coalition   number  — 0 spectator, 1 red, 2 blue
--- @param point       Vec3    — (optional) DCS world position of transmitter
--- @param speed       number  — (optional) speech speed -10…+10
--- @param gender      string  — (optional) "male" | "female"
--- @param culture     string  — (optional) locale, e.g. "en-US", "en-GB"
--- @param voice       string  — (optional) specific Windows voice name
-function STTS.TextToSpeech(text, freqs, modulations, volume, name, coalition,
-                            point, speed, gender, culture, voice)
-    if not text or text == "" then return end
-
-    freqs       = tostring(freqs       or "251.0")
-    modulations = tostring(modulations or "AM")
-    volume      = tostring(volume      or "1.0")
-    name        = tostring(name        or "ATC")
-    coalition   = tonumber(coalition)  or 0
-    speed       = tonumber(speed)      or 0
-    gender      = tostring(gender      or "male")
-    culture     = tostring(culture     or "en-US")
-
-    -- Strip characters that break the shell command
-    local t = text:gsub('["\n\r]', " "):gsub("%s+", " ")
-                  :match("^%s*(.-)%s*$") or ""
-
-    local exe = '"' .. STTS.DIRECTORY .. STTS.EXECUTABLE .. '"'
-    local cmd = string.format(
-        '%s -t "%s" -f %s -m %s -v %s -n "%s" -c %d -s %d -g %s -l %s',
-        exe, t, freqs, modulations, volume, name, coalition, speed, gender, culture)
-
-    if voice then
-        cmd = cmd .. string.format(' --voice "%s"', voice)
-    end
-
-    if point then
-        local lat, lon, alt = coord.LOtoLL(point)
-        cmd = cmd .. string.format(" -x %.6f -y %.1f -z %.6f", lat, alt, lon)
-    end
-
-    if STTS.SRS_PORT ~= 5002 then
-        cmd = cmd .. " -p " .. tostring(STTS.SRS_PORT)
-    end
-
-    -- cmd.exe has an 8191-char limit; write a .bat file for very long commands
-    if #cmd > 8000 then
-        local bat = os.getenv("TEMP") .. "\\stts_" .. STTS.uuid() .. ".bat"
-        local f   = io.open(bat, "w")
-        if f then
-            f:write('@echo off\r\n' .. cmd .. '\r\ndel "' .. bat .. '"\r\n')
-            f:close()
-            os.execute('start "" /b "' .. bat .. '"')
-        end
-    else
-        os.execute('start "" /b ' .. cmd)
-    end
-end
-
---- Play a pre-recorded audio file over an SRS radio frequency.
--- @param path        string  — absolute path to .mp3 or .ogg file
--- @param freqs       string  — MHz, e.g. "251.0"
--- @param modulations string  — "AM" or "FM"
--- @param volume      string  — "0.0" – "1.0"
--- @param name        string  — transmitter label
--- @param coalition   number  — 0 / 1 / 2
--- @param point       Vec3    — (optional) DCS world position
-function STTS.PlayMP3(path, freqs, modulations, volume, name, coalition, point)
-    if not path or path == "" then return end
-
-    freqs       = tostring(freqs       or "251.0")
-    modulations = tostring(modulations or "AM")
-    volume      = tostring(volume      or "1.0")
-    name        = tostring(name        or "ATC")
-    coalition   = tonumber(coalition)  or 0
-
-    local exe = '"' .. STTS.DIRECTORY .. STTS.EXECUTABLE .. '"'
-    local cmd = string.format(
-        '%s -i "%s" -f %s -m %s -v %s -n "%s" -c %d',
-        exe, path, freqs, modulations, volume, name, coalition)
-
-    if point then
-        local lat, lon, alt = coord.LOtoLL(point)
-        cmd = cmd .. string.format(" -x %.6f -y %.1f -z %.6f", lat, alt, lon)
-    end
-
-    if STTS.SRS_PORT ~= 5002 then
-        cmd = cmd .. " -p " .. tostring(STTS.SRS_PORT)
-    end
-
-    os.execute('start "" /b ' .. cmd)
-end
-
 
 -- ============================================================
--- 1b.  TTS CONFIG
--- ============================================================
--- Set srsPath to your SRS install directory.
--- MissionScripting.lua must be desanitized (remove os/io/lfs sandbox).
--- Re-apply desanitization after every DCS update.
-ATC.tts = {
-    srsPath  = "C:\\Program Files\\DCS-SimpleRadio-Standalone\\",
-    speed    = 0,           -- -10 (slow) … +10 (fast)
-    -- Words-per-second used to gap chained messages. Tune to your voice.
-    wps      = 2.5,
-    -- Volume is randomised per call within this range (adds natural variation).
-    volume   = { 0.90, 1.00 },
-    -- Gender is picked at random from this list each call.
-    genders  = { "male", "female" },
-    -- Culture (accent) per airfield.  Falls back to "en-US" if not listed.
-    -- Windows must have a TTS voice installed for each locale.
-    cultures = {
-        -- ── Caucasus — Georgia ───────────────────────────────
-        ["Batumi"]               = "ka-GE",
-        ["Kobuleti"]             = "ka-GE",
-        ["Kutaisi"]              = "ka-GE",
-        ["Senaki-Kolkhi"]        = "ka-GE",
-        ["Tbilisi-Lochini"]      = "ka-GE",
-        ["Vaziani"]              = "ka-GE",
-        ["Soganlug"]             = "ka-GE",
-        -- ── Caucasus — Russia ────────────────────────────────
-        ["Sukhumi"]              = "ru-RU",
-        ["Gudauta"]              = "ru-RU",
-        ["Sochi-Adler"]          = "ru-RU",
-        ["Gelendzhik"]           = "ru-RU",
-        ["Anapa-Vityazevo"]      = "ru-RU",
-        ["Krasnodar-Center"]     = "ru-RU",
-        ["Krasnodar-Pashkovsky"] = "ru-RU",
-        ["Krymsk"]               = "ru-RU",
-        ["Novorossiysk"]         = "ru-RU",
-        ["Beslan"]               = "ru-RU",
-        ["Mozdok"]               = "ru-RU",
-        ["Nalchik"]              = "ru-RU",
-        ["Mineralnye Vody"]      = "ru-RU",
-        ["Kola Murmansk"]        = "ru-RU",
-        -- ── Persian Gulf — UAE ───────────────────────────────
-        ["Abu Dhabi Intl"]       = "ar-AE",
-        ["Al Ain Intl"]          = "ar-AE",
-        ["Al Bateen"]            = "ar-AE",
-        ["Al Dhafra AB"]         = "ar-AE",
-        ["Al Maktoum Intl"]      = "ar-AE",
-        ["Al Minhad AB"]         = "ar-AE",
-        ["Dubai Intl"]           = "ar-AE",
-        ["Fujairah Intl"]        = "ar-AE",
-        ["Sharjah Intl"]         = "ar-AE",
-        -- ── Persian Gulf — Iran ──────────────────────────────
-        ["Kish Intl"]            = "fa-IR",
-        ["Bandar Abbas Intl"]    = "fa-IR",
-        ["Qeshm Island"]         = "fa-IR",
-        ["Lavan Island"]         = "fa-IR",
-        ["Lar"]                  = "fa-IR",
-        ["Jiroft"]               = "fa-IR",
-        ["Kerman"]               = "fa-IR",
-        ["Shiraz Intl"]          = "fa-IR",
-        ["Tunb Island AFB"]      = "fa-IR",
-        ["Sirri Island"]         = "fa-IR",
-        ["Abu Musa Island"]      = "fa-IR",
-        -- ── Syria — Turkey ───────────────────────────────────
-        ["Incirlik"]             = "tr-TR",
-        ["Hatay"]                = "tr-TR",
-        ["Adana Sakirpasa"]      = "tr-TR",
-        ["Gaziantep"]            = "tr-TR",
-        -- ── Syria — Cyprus (British base) ────────────────────
-        ["Akrotiri"]             = "en-GB",
-        ["Paphos"]               = "en-GB",
-        -- ── Syria — Arab ─────────────────────────────────────
-        ["Aleppo"]               = "ar-SY",
-        ["Kuweires"]             = "ar-SY",
-        ["Taftanaz"]             = "ar-SY",
-        ["Al Qusayr"]            = "ar-SY",
-        ["Khalkhalah"]           = "ar-SY",
-        ["Tiyas"]                = "ar-SY",
-        ["Deir ez-Zor"]          = "ar-SY",
-        ["Abu ad Duhur"]         = "ar-SY",
-        ["Damascus"]             = "ar-SY",
-        ["Marj Ruhayyil"]        = "ar-SY",
-        ["Mezzeh"]               = "ar-SY",
-        -- ── Lebanon ──────────────────────────────────────────
-        ["Beirut-Rafic Hariri"]  = "ar-LB",
-        -- ── Israel ───────────────────────────────────────────
-        ["Ramat David"]          = "he-IL",
-        ["Haifa"]                = "he-IL",
-        ["Tel Nof"]              = "he-IL",
-        -- ── Normandy / The Channel — France ──────────────────
-        ["Normandy Carpiquet"]   = "fr-FR",
-        ["Normandy Evreux"]      = "fr-FR",
-        -- ── Iraq ─────────────────────────────────────────────
-        ["Baghdad Intl"]         = "ar-IQ",
-        -- ── Sinai ────────────────────────────────────────────
-        ["Sinai Cairo Intl"]     = "ar-EG",
-        -- Nevada, Marianas, Afghanistan — en-US (default fallback)
-    },
-}
-
-STTS.DIRECTORY = ATC.tts.srsPath
-
-
--- ============================================================
--- 1c.  RUNWAY DATA  (Part 3 – Radar Vectoring)
+-- 1b.  RUNWAY DATA  (Part 3 – Radar Vectoring)
 -- ============================================================
 --[[
   One entry per airbase name (must match DCS internal name exactly).
@@ -1475,50 +1254,29 @@ function ATC.getApproachSpeeds(unit)
         or ATC.config.approachSpeeds["default"]
 end
 
---- Strip newlines / collapse whitespace for TTS engine input.
-function ATC.ttsClean(text)
-    return (text:gsub("\n", "  "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", ""))
-end
-
---- Estimate TTS clip duration (seconds) from a text string.
--- Callers use this to chain messages with the correct gap.
-function ATC.ttsDuration(text)
-    local clean = ATC.ttsClean(text)
-    local words = select(2, clean:gsub("%S+", ""))
-    return math.max(2, math.ceil(words / (ATC.tts.wps or 2.5)))
-end
-
---- Send a guidance message as on-screen text, and voice via STTS when enabled.
--- @param groupId  number
--- @param abPos    Vec3    airbase position (STTS transmitter origin)
--- @param text     string  full message shown on screen and spoken
--- @param long     bool    use long display duration
--- @param abName   string  (optional) airbase name used to look up approach freq
-function ATC.radioMsg(groupId, abPos, text, long, abName)
+--- Send a guidance message as on-screen text AND a radio call subtitle.
+-- When voiceover .ogg files are available, replace trigger.action.outTextForGroup
+-- with trigger.action.radioTransmission() using the assembled phrase.
+-- @param groupId   number
+-- @param abPos     Vec3   (airbase position – radio transmitter origin)
+-- @param text      string (the full message shown on screen + as subtitle)
+-- @param long      bool   (use long duration)
+function ATC.radioMsg(groupId, abPos, text, long)
+    -- Text fallback (always works, no audio files needed)
     ATC.msg(groupId, text, long)
 
-    if STTS and STTS.TextToSpeech and abPos then
-        local rwy  = abName and ATC.runways[abName]
-        local freq = (rwy and rwy.frequencies and rwy.frequencies.approach)
-                     and tostring(rwy.frequencies.approach.mhz)
-                     or "251.0"
-        local vol     = ATC.tts.volume
-        local volume  = string.format("%.2f",
-                            vol[1] + math.random() * (vol[2] - vol[1]))
-        local genders = ATC.tts.genders
-        local gender  = genders[math.random(#genders)]
-        local culture = (abName and ATC.tts.cultures[abName]) or "en-US"
-        STTS.TextToSpeech(
-            ATC.ttsClean(text),
-            freq, "AM",
-            volume,
-            (abName or "ATC") .. " ATC",
-            2,           -- blue coalition
-            abPos,
-            ATC.tts.speed,
-            gender,
-            culture)
-    end
+    --[[ OPTIONAL: uncomment once .ogg files are present in the .miz
+    local freq = 305000000   -- TODO: per-airfield tower frequency
+    trigger.action.radioTransmission(
+        "l10n/DEFAULT/atc_phrase.ogg",  -- placeholder; swap for assembled file list
+        abPos,
+        0,          -- AM
+        false,      -- no loop
+        freq,
+        100,        -- power
+        text        -- subtitle
+    )
+    --]]
 end
 
 
@@ -2231,43 +1989,17 @@ function ATC.onInboundRequest(arg)
         ATC.setPhase(unitName, airbaseName, "inbound")
     end
 
-    -- Engage before any timers fire so phase/field state are consistent
-    ATC.setEngagedField(unitName, airbaseName)
-
-    local abPos = ATC.getAirbasePos(ab)
-
-    -- t = 0 : Pilot's check-in  (text only – this is the player speaking)
-    ATC.msg(rec.groupId, string.format(
-        "%s Approach,  %s,  inbound for landing.\n%s at %s.",
-        airbaseName, cs, distStr, altStr))
-
-    -- t = 0 : Traffic board (text to all players)
+    ATC.msg(rec.groupId, response)
     ATC.msgAll(string.format("[Traffic]  %s inbound to %s, number %s.",
         cs, airbaseName, ATC.ordinal(seqN)))
 
-    -- t = 5 : Approach controller reply — voice + text
-    local t1      = timer.getTime() + 5
-    local respDur = ATC.ttsDuration(response)
+    -- Engage player with this airfield
+    ATC.setEngagedField(unitName, airbaseName)
 
-    timer.scheduleFunction(function(p)
-        local r  = ATC.state.aircraft[p.unitName]
-        local u2 = Unit.getByName(p.unitName)
-        if not r or not u2 then return nil end
-        local ab2  = Airbase.getByName(p.airbaseName)
-        local pos2 = ab2 and ATC.getAirbasePos(ab2) or p.abPos
-        ATC.radioMsg(r.groupId, pos2, p.response, false, p.airbaseName)
-        return nil
-    end, { unitName=unitName, airbaseName=airbaseName, response=response, abPos=abPos }, t1)
-
-    -- t = 5 + clip_duration + 0.5s gap : Initial radar vectors — voice + text
-    timer.scheduleFunction(function(p)
-        local r = ATC.state.aircraft[p.unitName]
-        if not r or not Unit.getByName(p.unitName) then return nil end
-        if ATC.getRunway(p.airbaseName) then
-            ATC.vectorToFinal(p.unitName, p.airbaseName)
-        end
-        return nil
-    end, { unitName=unitName, airbaseName=airbaseName }, t1 + respDur + 0.5)
+    -- Part 3: If runway data exists, issue radar vectors
+    if ATC.getRunway(airbaseName) then
+        ATC.vectorToFinal(unitName, airbaseName)
+    end
 end
 
 -- ── F2 (airborne) – Position Report ─────────────────────────
@@ -2473,7 +2205,7 @@ function ATC.checkAndClearNext(airbaseName)
                     if abPos then
                         ATC.radioMsg(wRec.groupId, abPos, string.format(
                             "%s, descend and maintain %d ft.  Speed %d kt.",
-                            cs, newAlt, spd), true, airbaseName)
+                            cs, newAlt, spd), true)
                     end
                 end
             end
@@ -2594,7 +2326,7 @@ function ATC.checkGlideslopes()
                                 "%scontact %s Tower on this frequency.\n" ..
                                 "%.1f NM from threshold.",
                                 controllerCall(unitName, abName, "Approach"), abName, distNM),
-                                false, abName)
+                                false)
                             rec.handedOffToTower[abName] = true
                         end
 
@@ -2607,7 +2339,7 @@ function ATC.checkGlideslopes()
                                 "%sgo around, go around!\n"                ..
                                 "Airspeed critically low:  %d kt.\n"       ..
                                 "Climb immediately, runway heading.",
-                                controllerCall(unitName, abName, controller), spdKt), true, abName)
+                                controllerCall(unitName, abName, controller), spdKt), true)
                             ATC.setPhase(unitName, abName, "goaround")
                             rec.lastGuidance[abName] = now
 
@@ -2622,7 +2354,7 @@ function ATC.checkGlideslopes()
                                     "Check gear down and locked.  %.1f NM.",
                                     controllerCall(unitName, abName, controller),
                                     spds.final, distNM),
-                                    false, abName)
+                                    false)
                                 rec.gearReminded[abName] = true
                                 rec.lastGuidance[abName] = now
 
@@ -2634,7 +2366,7 @@ function ATC.checkGlideslopes()
                                     controllerCall(unitName, abName, controller),
                                     spds.final, spdKt,
                                     distNM, altFt and tostring(altFt) or "unknown"),
-                                    false, abName)
+                                    false)
                                 rec.lastGuidance[abName] = now
 
                             end  -- if/elseif gear-speed checks
@@ -2667,7 +2399,7 @@ function ATC.checkGlideslopes()
                                     rec.patternAdv[abName] = "final"
                                     ATC.radioMsg(rec.groupId, abPos, string.format(
                                         "%sestablished on final, runway %s.\nContinue approach.",
-                                        controllerCall(unitName, abName, "Tower"), rwyNum), false, abName)
+                                        controllerCall(unitName, abName, "Tower"), rwyNum), false)
 
                                 -- Base: within 25° of base heading, ≤8 NM, not yet called base or final
                                 elseif math.abs(angleDiff(acHdg, legs.baseHdg)) <= 25
@@ -2677,7 +2409,7 @@ function ATC.checkGlideslopes()
                                     ATC.radioMsg(rec.groupId, abPos, string.format(
                                         "%son base, runway %s.\nTurn final heading %s.  Descend to %d ft.",
                                         controllerCall(unitName, abName, "Tower"),
-                                        rwyNum, ATC.fmtHdg(legs.finalHdg), patAlt - 300), false, abName)
+                                        rwyNum, ATC.fmtHdg(legs.finalHdg), patAlt - 300), false)
 
                                 -- Downwind: within 30° of downwind heading, 3–12 NM, not yet called
                                 elseif math.abs(angleDiff(acHdg, legs.downwindHdg)) <= 30
@@ -2687,7 +2419,7 @@ function ATC.checkGlideslopes()
                                         "%sabeam the threshold, runway %s, %s traffic.\nDescend to %d ft.  Base heading %s.",
                                         controllerCall(unitName, abName, "Approach"),
                                         rwyNum, trafficDir, patAlt,
-                                        ATC.fmtHdg(legs.baseHdg)), false, abName)
+                                        ATC.fmtHdg(legs.baseHdg)), false)
                                 end
                             end
                         end
@@ -2784,7 +2516,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
 
     if gate.noSpeed then
         ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s, %s, %s.", cs, hdgPart, altPart), true, abName)
+            string.format("%s, %s, %s.", cs, hdgPart, altPart), true)
     else
         local spdTol = math.max(10, math.floor(gate.speedKt * 0.05))
         local spdPart
@@ -2796,7 +2528,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
             spdPart = "increase speed to " .. gate.speedKt .. " kt"
         end
         ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s, %s, %s, %s.", cs, hdgPart, altPart, spdPart), true, abName)
+            string.format("%s, %s, %s, %s.", cs, hdgPart, altPart, spdPart), true)
     end
     rec.lastVector[abName] = now
 end
