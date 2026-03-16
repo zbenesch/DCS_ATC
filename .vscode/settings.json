@@ -1,0 +1,17 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cmd /c \"where /r C:\\\\ MissionScripting\\.lua 2>nul\" 2>/dev/null ; cmd /c \"dir /s /b \\\\\"C:\\\\MissionScripting\\.lua\\\\\" 2>nul\" 2>/dev/null ; cmd /c \"dir /s /b \\\\\"D:\\\\MissionScripting\\.lua\\\\\" 2>nul\" 2>/dev/null ; cmd /c \"dir /s /b \\\\\"E:\\\\MissionScripting\\.lua\\\\\" 2>nul\" 2>/dev/null$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c \"powershell -Command \\\\\"Get-ItemProperty HKLM:\\\\\\\\SOFTWARE\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\Uninstall\\\\\\\\\\* \\| Where-Object \\{ \\$_\\.DisplayName -like '\\*DCS\\*' \\} \\| Select-Object DisplayName,InstallLocation\\\\\"\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^# Examine a WAV file from DCS to understand audio specs\npython3 -c \"\nimport wave\nwith wave\\.open\\('/h/DCS World/Doc/Sounds/SoundModExample/Sounds/Effects/Animals/CowAmbience\\.wav', 'r'\\) as f:\n    print\\('Channels:', f\\.getnchannels\\(\\)\\)\n    print\\('Sample width \\(bytes\\):', f\\.getsampwidth\\(\\)\\)\n    print\\('Frame rate \\(Hz\\):', f\\.getframerate\\(\\)\\)\n    print\\('Frames:', f\\.getnframes\\(\\)\\)\n    print\\('Duration \\(s\\):', f\\.getnframes\\(\\)/f\\.getframerate\\(\\)\\)\n\" 2>/dev/null ; echo \"python3 not available or error\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "ffprobe": true
+    }
+}

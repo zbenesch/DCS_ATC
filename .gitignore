@@ -1,0 +1,6 @@
+# Generated phrase OGGs (run Mods/Services/DCS-ATC/Generate-Phrases.ps1 locally)
+# Mods/Services/DCS-ATC/phrases/
+
+# Scratch / temp
+*.tmp
+*.wav
