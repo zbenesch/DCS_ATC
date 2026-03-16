@@ -9,7 +9,7 @@ declare_plugin("DCS-ATC", {
     displayName   = _("DCS ATC Script"),
     version       = "1.0.0",
     state         = "installed",
-    info          = _("Procedural ATC for DCS World missions.\n\nSetup: add one Mission Start trigger:\n  DO SCRIPT FILE → Mods\\Services\\DCS-ATC\\Scripts\\ATC_Script.lua"),
+    info          = _("Procedural ATC for DCS World missions.\n\nThe script loads automatically on every mission via the DCS-ATC-hook.lua in Scripts\\Hooks\\. No mission trigger required."),
 })
 
 -- Mount phrase OGG library into DCS sound VFS.

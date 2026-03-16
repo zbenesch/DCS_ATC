@@ -1,11 +1,16 @@
-﻿<#
+<#
 .SYNOPSIS
-    Generates OGG phrase files for the DCS ATC phrase-stitching audio system.
+    Generates OGG phrase files for the DCS ATC phrase-stitching audio system
+    using the ElevenLabs text-to-speech API.
 
 .DESCRIPTION
-    Uses Windows SAPI TTS to synthesise each phrase as a WAV, then converts to OGG
-    Vorbis (mono 44100 Hz 48 kbps) using FFmpeg.  Writes a Lua duration manifest
-    section back into ATC_Script.lua between its PHRASE_DUR_START / PHRASE_DUR_END markers.
+    Calls the ElevenLabs API for each phrase × voice combination, retrieves MP3
+    audio, applies a narrow-band radio effect via FFmpeg (300-3400 Hz bandpass),
+    converts to OGG Vorbis (mono 44100 Hz), and patches the Lua duration manifest
+    back into ATC_Script.lua between PHRASE_DUR_START / PHRASE_DUR_END markers.
+
+.PARAMETER ApiKey
+    ElevenLabs API key.  Required.
 
 .PARAMETER OutDir
     Root folder to write voice sub-folders into.
@@ -13,34 +18,100 @@
 
 .PARAMETER ScriptPath
     Path to ATC_Script.lua to patch the duration table.
-    Default: <script dir>\..\ATC_Script.lua
+    Default: <script dir>\Scripts\ATC_Script.lua
 
 .PARAMETER FFmpeg
     Path to ffmpeg.exe.  Defaults to "ffmpeg" (assumes it is in PATH).
 
+.PARAMETER NoRadioEffect
+    Skip the radio bandpass filter - output clean TTS audio.
+
 .EXAMPLE
-    .\Generate-Phrases.ps1
-    .\Generate-Phrases.ps1 -FFmpeg "C:\tools\ffmpeg\bin\ffmpeg.exe"
+    .\Generate-Phrases.ps1 -ApiKey "sk_..."
+    .\Generate-Phrases.ps1 -ApiKey "sk_..." -FFmpeg "E:\downloader\ffmpeg.exe"
 #>
 param(
+    [Parameter(Mandatory)][string]$ApiKey,
     [string]$OutDir     = "$PSScriptRoot\phrases",
     [string]$ScriptPath = "$PSScriptRoot\Scripts\ATC_Script.lua",
-    [string]$FFmpeg     = "ffmpeg"
+    [string]$FFmpeg     = "ffmpeg",
+    [switch]$NoRadioEffect
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# -- Verify FFmpeg -------------------------------------------------------------
-try { & $FFmpeg -version 2>&1 | Out-Null }
+# -- Verify FFmpeg / FFprobe ---------------------------------------------------
+try { Start-Process -FilePath $FFmpeg -ArgumentList "-version" `
+        -Wait -NoNewWindow `
+        -RedirectStandardOutput "$env:TEMP\ffver.txt" `
+        -RedirectStandardError  "$env:TEMP\ffver_err.txt" | Out-Null }
 catch {
-    Write-Error "FFmpeg not found at '$FFmpeg'.  Install FFmpeg and add it to PATH, or pass -FFmpeg <path>."
+    Write-Error "FFmpeg not found at '$FFmpeg'.  Pass -FFmpeg <path>."
     exit 1
 }
-$FFprobe = $FFmpeg -replace "ffmpeg(\.exe)?$","ffprobe`$1"
 
-# -- Phrases dictionary: token-name → spoken text -----------------------------
-# Token name is used as the filename (without .ogg) and as the Lua table key.
+# -- Radio effect filter chain -------------------------------------------------
+# Narrow-band AM radio: 300-3400 Hz bandpass + slight treble clarity boost.
+# This is applied during MP3 -> OGG conversion.
+$RadioFilter = "highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
+
+# -- ElevenLabs voice definitions ----------------------------------------------
+# folder-key must match the voice folder names referenced in ATC_Script.lua
+$Voices = [ordered]@{
+    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel - British male, broadcaster
+    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam   - American male, firm
+    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice  - British female, professional
+}
+
+# Phrase frequency mapping: token-name -> frequency
+$PhraseFrequency = [ordered]@{
+    # Approach
+    "approach" = "approach"
+    "continue-approach" = "approach"
+    "expect-vectors-to-runway" = "approach"
+    "radar-contact" = "approach"
+    "descend-to" = "approach"
+    "climb-to" = "approach"
+    "report-final" = "approach"
+    "cleared-for-the-approach" = "approach"
+    "established-on-final" = "approach"
+    "turn-final-heading" = "approach"
+    "base-heading" = "approach"
+    "abeam-the-threshold" = "approach"
+    "on-base-runway" = "approach"
+    "maintain" = "approach"
+    # Tower
+    "tower" = "tower"
+    "request-takeoff" = "tower"
+    "ready-for-departure" = "tower"
+    "request-landing" = "tower"
+    "on-this-frequency" = "tower"
+    "from-threshold" = "tower"
+    "runway-clear" = "tower"
+    "you-are-number" = "tower"
+    "slow-to-approach-speed" = "tower"
+    "check-gear-down-and-locked" = "tower"
+    "go-around-go-around" = "tower"
+    "airspeed-critically-low" = "tower"
+    "climb-immediately-runway-heading" = "tower"
+    # Ground
+    "ground" = "ground"
+    "request-startup" = "ground"
+    "request-taxi" = "ground"
+    "hold" = "ground"
+    "expect" = "ground"
+    # Add more mappings as needed
+}
+
+# Voice assignment by frequency
+$FrequencyVoice = [ordered]@{
+    "approach" = "daniel"
+    "tower" = "adam"
+    "ground" = "alice"
+}
+
+# -- Phrases dictionary: token-name -> spoken text ----------------------------
 $Phrases = [ordered]@{
     # -- Digits (ATC pronunciation) --------------------------------------------
     "zero"   = "zero"
@@ -81,7 +152,7 @@ $Phrases = [ordered]@{
     "hold"    = "hold"
     "expect"  = "expect"
 
-    # -- Heading instruction chunks ---------------------------------------------
+    # -- Heading instruction chunks --------------------------------------------
     "fly-heading"         = "fly heading"
     "turn-left-heading"   = "turn left heading"
     "turn-right-heading"  = "turn right heading"
@@ -91,7 +162,7 @@ $Phrases = [ordered]@{
     "reduce-speed-to"     = "reduce speed to"
     "increase-speed-to"   = "increase speed to"
 
-    # -- Pattern advisories ----------------------------------------------------
+    # -- Pattern advisories ---------------------------------------------------
     "abeam-the-threshold"  = "abeam the threshold"
     "on-base-runway"       = "on base, runway"
     "base-heading"         = "base heading"
@@ -99,7 +170,7 @@ $Phrases = [ordered]@{
     "established-on-final" = "established on final"
     "continue-approach"    = "continue approach"
 
-    # -- Approach clearance ----------------------------------------------------
+    # -- Approach clearance ---------------------------------------------------
     "cleared-for-the-approach"   = "cleared for the approach"
     "runway-clear"               = "runway clear"
     "you-are-number"             = "you are number"
@@ -107,20 +178,20 @@ $Phrases = [ordered]@{
     "radar-contact"              = "radar contact"
     "expect-vectors-to-runway"   = "expect vectors to runway"
 
-    # -- Tower handoff ---------------------------------------------------------
+    # -- Tower handoff --------------------------------------------------------
     "on-this-frequency" = "on this frequency"
     "from-threshold"    = "from threshold"
 
-    # -- Gear / speed reminder -------------------------------------------------
+    # -- Gear / speed reminder ------------------------------------------------
     "slow-to-approach-speed"     = "slow to approach speed"
     "check-gear-down-and-locked" = "check gear down and locked"
 
-    # -- Emergency / go-around -------------------------------------------------
+    # -- Emergency / go-around ------------------------------------------------
     "go-around-go-around"             = "go around, go around"
     "airspeed-critically-low"         = "airspeed critically low"
     "climb-immediately-runway-heading" = "climb immediately, runway heading"
 
-    # -- NATO phonetic alphabet ------------------------------------------------
+    # -- NATO phonetic alphabet -----------------------------------------------
     "alpha"    = "alpha"
     "bravo"    = "bravo"
     "charlie"  = "charlie"
@@ -148,42 +219,42 @@ $Phrases = [ordered]@{
     "yankee"   = "yankee"
     "zulu"     = "zulu"
 
-    # -- Common DCS player callsign words --------------------------------------
-    "enfield"    = "enfield"
+    # -- Common DCS player callsign words -------------------------------------
+    "enfield"     = "enfield"
     "springfield" = "springfield"
-    "uzi"        = "uzi"
-    "colt"       = "colt"
-    "dodge"      = "dodge"
-    "ford"       = "ford"
-    "chevy"      = "chevy"
-    "pontiac"    = "pontiac"
-    "lobo"       = "lobo"
-    "hawg"       = "hawg"
-    "olds"       = "olds"
-    "lincoln"    = "lincoln"
-    "jedi"       = "jedi"
-    "viper"      = "viper"
-    "venom"      = "venom"
-    "witch"      = "witch"
-    "cobra"      = "cobra"
-    "bone"       = "bone"
-    "mako"       = "mako"
-    "dude"       = "dude"
-    "tiger"      = "tiger"
-    "wolf"       = "wolf"
-    "weasel"     = "weasel"
-    "panther"    = "panther"
-    "hawk"       = "hawk"
-    "reaper"     = "reaper"
-    "ghost"      = "ghost"
-    "eagle"      = "eagle"
-    "shark"      = "shark"
-    "sniper"     = "sniper"
-    "lancer"     = "lancer"
-    "devil"      = "devil"
-    "rebel"      = "rebel"
-    "storm"      = "storm"
-    "talon"      = "talon"
+    "uzi"         = "uzi"
+    "colt"        = "colt"
+    "dodge"       = "dodge"
+    "ford"        = "ford"
+    "chevy"       = "chevy"
+    "pontiac"     = "pontiac"
+    "lobo"        = "lobo"
+    "hawg"        = "hawg"
+    "olds"        = "olds"
+    "lincoln"     = "lincoln"
+    "jedi"        = "jedi"
+    "viper"       = "viper"
+    "venom"       = "venom"
+    "witch"       = "witch"
+    "cobra"       = "cobra"
+    "bone"        = "bone"
+    "mako"        = "mako"
+    "dude"        = "dude"
+    "tiger"       = "tiger"
+    "wolf"        = "wolf"
+    "weasel"      = "weasel"
+    "panther"     = "panther"
+    "hawk"        = "hawk"
+    "reaper"      = "reaper"
+    "ghost"       = "ghost"
+    "eagle"       = "eagle"
+    "shark"       = "shark"
+    "sniper"      = "sniper"
+    "lancer"      = "lancer"
+    "devil"       = "devil"
+    "rebel"       = "rebel"
+    "storm"       = "storm"
+    "talon"       = "talon"
 
     # -- Caucasus airfield words -----------------------------------------------
     "batumi"       = "batumi"
@@ -213,7 +284,7 @@ $Phrases = [ordered]@{
     "maykop"       = "maykop"
     "pashkovsky"   = "pashkovsky"
 
-    # -- Persian Gulf airfield words -------------------------------------------
+    # -- Persian Gulf airfield words ------------------------------------------
     "abu"      = "abu"
     "dhabi"    = "dhabi"
     "ain"      = "ain"
@@ -238,7 +309,7 @@ $Phrases = [ordered]@{
     "sirri"    = "sirri"
     "musa"     = "musa"
 
-    # -- Syria / other theater words -------------------------------------------
+    # -- Syria / other theater words ------------------------------------------
     "incirlik"   = "incirlik"
     "akrotiri"   = "akrotiri"
     "hatay"      = "hatay"
@@ -266,116 +337,152 @@ $Phrases = [ordered]@{
     "normandy"   = "normandy"
 }
 
-# -- Voices: folder-name → SAPI display name pattern --------------------------
-$Voices = [ordered]@{
-    "david" = "Microsoft David"
-    "zira"  = "Microsoft Zira"
-    "mark"  = "Microsoft Mark"
-}
-
-# -- Helper: read WAV duration (seconds) from PCM header ----------------------
-function Get-WavDuration([string]$Path) {
-    $reader = [System.IO.BinaryReader][System.IO.File]::OpenRead($Path)
+# -- Helper: get audio duration using ffmpeg -i (no ffprobe needed) ------------
+function Get-AudioDuration([string]$Path) {
+    $tmpErr = "$env:TEMP\ffmpeg_info_err.txt"
+    # ffmpeg -i <file> with no output file always exits 1, but writes
+    # stream metadata (including Duration) to stderr.
+    Start-Process -FilePath $FFmpeg `
+        -ArgumentList "-i `"$Path`"" `
+        -Wait -NoNewWindow `
+        -RedirectStandardOutput "$env:TEMP\ffmpeg_info_out.txt" `
+        -RedirectStandardError  $tmpErr | Out-Null
     try {
-        $reader.BaseStream.Seek(24, 'Begin') | Out-Null  # sample rate field
-        $sampleRate = [BitConverter]::ToInt32($reader.ReadBytes(4), 0)
-        $reader.BaseStream.Seek(4, 'Current') | Out-Null  # skip ByteRate, BlockAlign
-        $reader.BaseStream.Seek(2, 'Current') | Out-Null
-        $bitsPerSample = [BitConverter]::ToInt16($reader.ReadBytes(2), 0)
-        # Find 'data' chunk (skip any 'fmt ' extension chunks)
-        $reader.BaseStream.Seek(12, 'Begin') | Out-Null
-        while ($reader.BaseStream.Position -lt ($reader.BaseStream.Length - 8)) {
-            $tag  = [System.Text.Encoding]::ASCII.GetString($reader.ReadBytes(4))
-            $size = [BitConverter]::ToInt32($reader.ReadBytes(4), 0)
-            if ($tag -eq "data") {
-                return [double]$size / ($sampleRate * ($bitsPerSample / 8))
-            }
-            $reader.BaseStream.Seek($size, 'Current') | Out-Null
+        $info = Get-Content $tmpErr -Raw -ErrorAction SilentlyContinue
+        if ($info -match 'Duration:\s*(\d+):(\d+):([0-9.]+)') {
+            return ([int]$Matches[1] * 3600) + ([int]$Matches[2] * 60) + [double]$Matches[3]
         }
-    } finally { $reader.Close() }
-    return 0.5  # fallback
+    } catch {}
+    return 0.5
 }
 
-# -- Initialise SAPI objects ---------------------------------------------------
-$synth  = New-Object -ComObject SAPI.SpVoice
-$stream = New-Object -ComObject SAPI.SpFileStream
-$fmt    = New-Object -ComObject SAPI.SpAudioFormat
-$fmt.Type = 34   # SAFT44kHz16BitMono
+# -- Helper: call ElevenLabs TTS with retry on rate-limit ---------------------
+function Invoke-ElevenLabsTTS {
+    param([string]$Text, [string]$VoiceId, [string]$OutPath)
 
-$availableVoices = $synth.GetVoices()
+    $body = @{
+        text       = $Text
+        model_id   = "eleven_turbo_v2_5"
+        voice_settings = @{
+            stability        = 0.75
+            similarity_boost = 0.85
+            style            = 0.0   # no style exaggeration for clean ATC delivery
+            use_speaker_boost = $true
+        }
+    } | ConvertTo-Json -Depth 5
 
-# -- Duration accumulator ------------------------------------------------------
-# durations["david/zero"] = 0.42
-$durations = @{}
+    $headers = @{
+        "xi-api-key"   = $ApiKey
+        "Content-Type" = "application/json"
+    }
 
-$totalFiles = $Voices.Count * $Phrases.Count
-$done = 0
+    $uri = "https://api.elevenlabs.io/v1/text-to-speech/$VoiceId" +
+           "?output_format=mp3_44100_128"
 
-foreach ($voiceEntry in $Voices.GetEnumerator()) {
-    $folderKey = $voiceEntry.Key       # "david"
-    $voicePattern = $voiceEntry.Value  # "Microsoft David"
-
-    # Find matching SAPI voice
-    $sapiVoice = $null
-    for ($i = 0; $i -lt $availableVoices.Count; $i++) {
-        if ($availableVoices.Item($i).GetDescription() -like "*$voicePattern*") {
-            $sapiVoice = $availableVoices.Item($i)
-            break
+    $attempts = 0
+    while ($true) {
+        $attempts++
+        try {
+            Invoke-RestMethod -Uri $uri -Method POST `
+                -Headers $headers -Body $body -OutFile $OutPath
+            return
+        } catch {
+            $status = $_.Exception.Response.StatusCode.Value__
+            if ($status -eq 429 -and $attempts -lt 4) {
+                Write-Warning "  Rate limited - waiting 10 s (attempt $attempts)"
+                Start-Sleep -Seconds 10
+            } else {
+                throw
+            }
         }
     }
-    if (-not $sapiVoice) {
-        Write-Warning "Voice '$voicePattern' not found on this system - skipping."
+}
+
+# -- Main generation loop ------------------------------------------------------
+$durations  = @{}
+$totalFiles = $Voices.Count * $Phrases.Count
+$done       = 0
+
+$radioNote = if ($NoRadioEffect) { "(no radio effect)" } else { "(radio effect ON)" }
+Write-Host "`nGenerating $totalFiles clips for $($Voices.Count) voices $radioNote" -ForegroundColor Cyan
+
+foreach ($phrase in $Phrases.GetEnumerator()) {
+    $token   = $phrase.Key
+    $text    = $phrase.Value
+    $frequency = $PhraseFrequency[$token]
+    if (-not $frequency) { continue }
+    $voiceKey = $FrequencyVoice[$frequency]
+    $voiceId = $Voices[$voiceKey]
+    $voiceDir = Join-Path $OutDir $voiceKey
+    New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
+    $mp3Path = Join-Path $voiceDir "$token.mp3"
+    $oggPath = Join-Path $voiceDir "$token.ogg"
+
+    # Skip if OGG already exists and is non-empty (resume support)
+    if ((Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
+        $dur = Get-AudioDuration $oggPath
+        $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
+        $done++
         continue
     }
-    $synth.Voice = $sapiVoice
-    Write-Host "`n=== Voice: $($sapiVoice.GetDescription()) ===" -ForegroundColor Cyan
 
-    $voiceDir = Join-Path $OutDir $folderKey
-    New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
-
-    foreach ($phrase in $Phrases.GetEnumerator()) {
-        $token = $phrase.Key    # "turn-left-heading"
-        $text  = $phrase.Value  # "turn left heading"
-
-        $wavPath = Join-Path $voiceDir "$token.wav"
-        $oggPath = Join-Path $voiceDir "$token.ogg"
-
-        # Generate WAV via SAPI
-        $fmt.Type = 34
-        try { $stream.Format = $fmt } catch {}
-        $stream.Open($wavPath, 3)  # SSFMCreateForWrite
-        $synth.AudioOutputStream = $stream
-        $synth.Speak($text)
-        $stream.Close()
-
-        # Get duration from WAV header
-        $dur = Get-WavDuration $wavPath
-
-        # Convert WAV → OGG: mono, 44100 Hz, ~48 kbps.
-        # Use Start-Process to avoid $ErrorActionPreference = "Stop" treating
-        # FFmpeg's informational stderr output as a PowerShell error.
-        $proc = Start-Process -FilePath $FFmpeg `
-            -ArgumentList "-y -i `"$wavPath`" -ar 44100 -ac 1 -c:a libvorbis -q:a 3 `"$oggPath`"" `
-            -Wait -PassThru -NoNewWindow `
-            -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
-            -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
-        if ($proc.ExitCode -ne 0) {
-            $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
-            Write-Warning "FFmpeg failed for $token (exit $($proc.ExitCode)): $errText"
-        }
-
-        # Keep WAV? No - delete to save space
-        Remove-Item $wavPath -Force
-
-        $durations["$folderKey/$token"] = [Math]::Round($dur, 3)
+    # Call ElevenLabs API
+    try {
+        Invoke-ElevenLabsTTS -Text $text -VoiceId $voiceId -OutPath $mp3Path
+    } catch {
+        Write-Warning "  ElevenLabs failed for '$token': $_"
         $done++
-        Write-Progress -Activity "Generating phrases" `
-            -Status "$folderKey/$token ($done/$totalFiles)" `
-            -PercentComplete ([int](100 * $done / $totalFiles))
+        continue
     }
+
+    # Get duration from the MP3
+    $dur = Get-AudioDuration $mp3Path
+
+    # Build FFmpeg argument list
+    if ($NoRadioEffect) {
+        $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+    } else {
+        $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+    }
+
+    $proc = Start-Process -FilePath $FFmpeg `
+        -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
+        -Wait -PassThru -NoNewWindow `
+        -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
+        -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
+
+    if ($proc.ExitCode -ne 0) {
+        $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
+        Write-Warning "  FFmpeg failed for '$token' (exit $($proc.ExitCode)): $errText"
+    }
+
+    Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
+
+    $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
+    $done++
+
+    Write-Progress -Activity "Generating phrases" `
+        -Status "$voiceKey/$token  ($done / $totalFiles)" `
+        -PercentComplete ([int](100 * $done / $totalFiles))
+
+    # Small pause to be polite to the API
+    Start-Sleep -Milliseconds 150
 }
 
 Write-Progress -Activity "Generating phrases" -Completed
+
+# -- Scan all existing OGGs for durations (covers tokens skipped by frequency filter) --
+foreach ($vk in $Voices.Keys) {
+    $vDir = Join-Path $OutDir $vk
+    if (-not (Test-Path $vDir)) { continue }
+    foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg")) {
+        $key = "$vk/$($ogg.BaseName)"
+        if (-not $durations.ContainsKey($key)) {
+            $durations[$key] = [Math]::Round((Get-AudioDuration $ogg.FullName), 3)
+        }
+    }
+}
+
 Write-Host "`nGenerated $($durations.Count) clips into: $OutDir" -ForegroundColor Green
 
 # -- Build Lua duration table --------------------------------------------------
@@ -398,9 +505,9 @@ if (Test-Path $ScriptPath) {
         [System.IO.File]::WriteAllText($ScriptPath, $src)
         Write-Host "Duration table patched into: $ScriptPath" -ForegroundColor Green
     } else {
-        Write-Warning "Markers not found in '$ScriptPath'.  Writing manifest to: $PSScriptRoot\ATC_phrase_dur.lua"
+        Write-Warning "Markers not found in '$ScriptPath'.  Writing to: $PSScriptRoot\ATC_phrase_dur.lua"
         Set-Content -Path "$PSScriptRoot\ATC_phrase_dur.lua" -Value $manifest
     }
 }
 
-Write-Host "`nDone.  Phrases are in: $OutDir" -ForegroundColor Yellow
+Write-Host "`nDone." -ForegroundColor Yellow

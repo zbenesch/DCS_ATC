@@ -12,6 +12,10 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "ffprobe": true
+        "ffprobe": true,
+        "/^cd \"k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\" ; powershell\\.exe -ExecutionPolicy Bypass -File \"\\.\\\\Generate-Phrases\\.ps1\" -ApiKey \"sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5\" -FFmpeg \"E:\\\\downloader\\\\ffmpeg\\.exe\" 2>&1 \\| head -50$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
