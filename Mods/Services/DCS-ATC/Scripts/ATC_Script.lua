@@ -222,7 +222,7 @@ ATC.config = {
     -- Caucasus / Black Sea: ~5° East.  Persian Gulf: ~2° East.  Syria: ~4° East.
     -- All rwy.hdg / rwy.reciprocal values in ATC.runways are MAGNETIC (real-world
     -- runway designators).  DCS world coords use TRUE north.  ATC voices MAGNETIC.
-    magvar = 5,
+    magvar = 6,
 }
 
 -- ============================================================
@@ -343,7 +343,15 @@ ATC.runways = {
             approach = { mhz=123.600, hz=123600000 },
             departure = { mhz=124.300, hz=124300000 }
         },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
+        controllers = { ground=true, tower=true, approach=true, departure=true },
+        -- Circuit Reference Points from Kobuleti aerodrome chart (lat/lon decimal degrees)
+        -- rwyHdg matches ATC.runways[].hdg for the approach direction this CRP serves.
+        crps = {
+            { name="Black Sea", lat=42.018767, lon=41.752067, rwyHdg=70  },
+            { name="South",     lat=41.823583, lon=41.772667, rwyHdg=70  },
+            { name="NE",        lat=42.000733, lon=42.001550, rwyHdg=250 },
+            { name="East",      lat=41.909883, lon=42.007750, rwyHdg=250 },
+        },
     },
     ["Kutaisi"]             = { hdg=80,  reciprocal=260, elevation=147,  ILSfreq=109.75, patternAlt=1647,
         frequencies = {
@@ -3200,7 +3208,9 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         currSpd or 0, gate.speedKt or 0))
 
     -- Suppress re-issue if already on parameters within tolerance
-    if hdgDiff <= 10 and altDiff <= 50 and (gate.noSpeed or spdDiff <= 10) then
+    if hdgDiff <= 10
+       and altDiff <= math.max(50, gate.altFt * 0.05)
+       and (gate.noSpeed or spdDiff <= math.max(10, gate.speedKt * 0.05)) then
         ATC.log(string.format("IVEC  %-10s @%-20s  → SUPPRESSED (on params)", unitName, abName))
         rec.lastVector[abName] = now
         return
@@ -3247,6 +3257,27 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
     rec.lastVector[abName] = now
 end
 
+--- Find the nearest CRP for the active runway from a given position.
+-- Filters rwy.crps by crp.rwyHdg == rwy.hdg (approach direction).
+-- Uses coord.LLtoLO to convert lat/lon to DCS world Vec3.
+-- @return {pos=Vec3, name=string} or nil when no CRPs are defined/matched
+function ATC.selectCRP(rwy, uPos)
+    if not rwy.crps then return nil end
+    local best, bestDist2 = nil, math.huge
+    for _, crp in ipairs(rwy.crps) do
+        if crp.rwyHdg == rwy.hdg then
+            local p = coord.LLtoLO(crp.lat, crp.lon, 0)
+            local dx, dz = p.x - uPos.x, p.z - uPos.z
+            local d2 = dx * dx + dz * dz
+            if d2 < bestDist2 then
+                best      = { pos = p, name = crp.name }
+                bestDist2 = d2
+            end
+        end
+    end
+    return best
+end
+
 --- Issue initial radar vectors toward the racetrack entry point.
 -- The entry point is (nearNM + HOLD_LEG_NM) outbound on the runway centreline.
 -- All aircraft converge on this point regardless of their inbound direction.
@@ -3266,7 +3297,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
     rec.stackAlt[airbaseName] = assignedAlt
 
     local holdGate = {
-        altFt   = assignedAlt,
+        altFt   = math.floor((assignedAlt + 500) / 1000) * 1000,  -- nearest 1000 ft
         speedKt = HOLD_SPEED,
     }
     local nearNM      = ATC.config.ilsHandoffNM or 8
@@ -3303,6 +3334,27 @@ function ATC.vectorToFinal(unitName, airbaseName)
     rec.approachGate[airbaseName] = 1
     rec.patternLeg[airbaseName]   = "hold"
     rec.lastVector[airbaseName]   = timer.getTime()
+
+    -- Route to the nearest CRP first (if this runway defines them).
+    -- CRP phase: aircraft flies to the circuit entry point at stack alt, then
+    -- transitions to "inbound" once within 3 NM of the CRP.
+    local crp = ATC.selectCRP(rwy, uPos)
+    if crp then
+        rec.crpPos = rec.crpPos or {}
+        rec.crpPos[airbaseName]    = crp.pos
+        rec.holdPhase[airbaseName] = "to_crp"
+        local dx = crp.pos.x - uPos.x
+        local dz = crp.pos.z - uPos.z
+        local toCRPHdg = math.deg(math.atan2(dz, dx))
+        if toCRPHdg < 0 then toCRPHdg = toCRPHdg + 360 end
+        holdGate.noSpeed = true  -- no speed instruction while routing to CRP
+        ATC.log(string.format(
+            "VTF   %-10s @%-20s  → CRP %-12s  toCRPHdg=%3.0f  stackAlt=%d",
+            unitName, airbaseName, crp.name, toCRPHdg, assignedAlt))
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, holdGate,
+            toCRPHdg, timer.getTime(), airbaseName)
+        return
+    end
 
     ATC.log(string.format(
         "VTF   %-10s @%-20s  initDist=%5.1fNM  stackAlt=%d  toEntryHdg=%3.0f  outHdg=%3.0f  holdPhase=%s",
@@ -3349,7 +3401,7 @@ function ATC.checkVectoring()
 
                         -- Hold target: current stack altitude and speed
                         local holdGate = {
-                            altFt   = stackAlt,
+                            altFt   = math.floor((stackAlt + 500) / 1000) * 1000,  -- nearest 1000 ft
                             speedKt = HOLD_SPEED,
                         }
                         -- Pattern entry target: final approach point altitude and Vref
@@ -3388,7 +3440,33 @@ function ATC.checkVectoring()
                                 farNM, nearNM))
                         end
 
-                        if holdPhase == nil then
+                        if holdPhase == "to_crp" then
+                            -- Flying toward the circuit reference point.
+                            -- On arrival (≤3 NM) transition to inbound on runway heading.
+                            local crpPos = rec.crpPos and rec.crpPos[abName]
+                            if not crpPos then
+                                -- No CRP stored — fall back to inbound.
+                                rec.holdPhase[abName] = "inbound"
+                            else
+                                local crpDistNM = ATC.mToNM(ATC.distVec3H(uPos, crpPos))
+                                if crpDistNM <= 3 then
+                                    ATC.log(string.format("TRANS %-10s @%s  to_crp→INBOUND  crpDist=%.1fNM", unitName, abName, crpDistNM))
+                                    rec.holdPhase[abName] = "inbound"
+                                    ATC.issueVectorInstruction(unitName, rec, unit, abPos,
+                                        holdGate, inboundHdg, now, abName)
+                                elseif (now - lastT) > interval then
+                                    local dx = crpPos.x - uPos.x
+                                    local dz = crpPos.z - uPos.z
+                                    local toCRPHdg = math.deg(math.atan2(dz, dx))
+                                    if toCRPHdg < 0 then toCRPHdg = toCRPHdg + 360 end
+                                    ATC.log(string.format("REVEC %-10s @%s  to_crp  crpDist=%.1fNM", unitName, abName, crpDistNM))
+                                    local crpGate = { altFt = holdGate.altFt, speedKt = HOLD_SPEED, noSpeed = true }
+                                    ATC.issueVectorInstruction(unitName, rec, unit, abPos,
+                                        crpGate, toCRPHdg, now, abName)
+                                end
+                            end
+
+                        elseif holdPhase == nil then
                             -- On final approach (hold complete, cleared for landing).
                             -- Guard: ph must be "approach" — if still "inbound", vectorToFinal
                             -- hasn't fired yet and holdPhase will be set shortly; skip to avoid
