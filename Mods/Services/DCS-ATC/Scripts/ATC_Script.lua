@@ -1120,21 +1120,6 @@ function ATC.getOrCreateRecord(unitName, groupId)
             landingCleared = {}, -- [airbaseName] = true once "cleared for approach/landing" issued
             holdPhase      = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             greeted        = {}, -- [airbaseName][controller] = true if greeted
-        -- Helper: Get daytime greeting string based on in-game time
-        local function getDaytimeGreeting()
-            -- DCS time is seconds since mission start; get hour from env.mission or timer.getAbsTime if available
-            local hour = 12
-            if env and env.mission and env.mission.date and env.mission.start_time then
-                -- Use mission start time if available
-                local t = env.mission.start_time
-                hour = math.floor((t / 3600) % 24)
-            elseif timer and timer.getAbsTime then
-                hour = math.floor((timer.getAbsTime() / 3600) % 24)
-            end
-            if hour < 12 then return "Good morning"
-            elseif hour < 18 then return "Good afternoon"
-            else return "Good evening" end
-        end
         }
     end
     return ATC.state.aircraft[unitName]
@@ -2727,6 +2712,20 @@ end
 -- 5.  ATC LOGIC  –  handlers
 -- ============================================================
 -- Every handler receives:  arg = { unitName = string, airbaseName = string }
+
+--- Return a time-of-day greeting based on in-game absolute time.
+local function getDaytimeGreeting()
+    local hour = 12
+    if env and env.mission and env.mission.date and env.mission.start_time then
+        local t = env.mission.start_time
+        hour = math.floor((t / 3600) % 24)
+    elseif timer and timer.getAbsTime then
+        hour = math.floor((timer.getAbsTime() / 3600) % 24)
+    end
+    if hour < 12 then return "Good morning"
+    elseif hour < 18 then return "Good afternoon"
+    else return "Good evening" end
+end
 
 --- Standard ATC preamble text.
 --- Used for RESPONSES to a pilot's radio call.
