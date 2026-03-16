@@ -5,10 +5,16 @@
 --
 -- How it works:
 --   DCS loads all *.lua files in Scripts\Hooks\ into the GUI/Hooks environment.
---   When a mission finishes loading, onMissionLoadEnd() fires.  We use
+--   When the simulation starts, onSimulationStart() fires.  We use
 --   net.dostring_in('mission', ...) to run a dofile() inside the separate
 --   mission-scripting Lua environment, where DCS APIs like timer, trigger,
---   Unit, Airbase, etc. are available.
+--   missionCommands, Unit, Airbase, etc. are available.
+--
+-- NOTE: onSimulationStart is used instead of onMissionLoadEnd because
+--   missionCommands (the F10 menu API) and timer are only reliable after the
+--   simulation has actually started.  Calls made during onMissionLoadEnd
+--   (before the sim starts) are silently discarded by DCS, which is why the
+--   F10 menu never appeared.
 --
 -- The script path is resolved from lfs.writedir() so it works for both
 -- DCS stable and DCS open beta (each has its own Saved Games folder).
@@ -17,7 +23,7 @@ local _ATC_LOG_NAME = "DCS-ATC"
 
 local _atcHook = {}
 
-function _atcHook.onMissionLoadEnd()
+function _atcHook.onSimulationStart()
     local ok, err = pcall(function()
         local lfs = require('lfs')
         local scriptPath = lfs.writedir() ..

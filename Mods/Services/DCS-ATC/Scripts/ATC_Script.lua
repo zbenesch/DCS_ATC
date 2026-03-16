@@ -2981,7 +2981,7 @@ function ATC.onGoAround(arg)
     ATC.setPhase(unitName, airbaseName, "goaround")
     -- Reset gear reminder and GS deviation state for the new circuit
     if rec.gearReminded    then rec.gearReminded[airbaseName]    = nil end
-    if rec.lastGSDev       then rec.lastGSDev    = {} end
+    if rec.lastGSDev       then rec.lastGSDev[airbaseName]    = nil end
     if rec.handedOffToTower then rec.handedOffToTower[airbaseName] = nil end
     if rec.approachGate    then rec.approachGate[airbaseName]    = nil end
     if rec.landingCleared  then rec.landingCleared[airbaseName]  = nil end
@@ -3137,8 +3137,12 @@ function ATC.eventHandler:onEvent(event)
     if event.id == world.event.S_EVENT_BIRTH then
         local unit = event.initiator
         if not unit then return end
-        if not ATC.isPlayer(unit) then return end   -- PLAYER-ONLY GUARD
 
+        -- NOTE: Do NOT guard with ATC.isPlayer() here.  In some DCS versions
+        -- unit:getPlayerName() returns nil at the exact moment S_EVENT_BIRTH
+        -- fires, even for human-controlled slots.  We defer the check to the
+        -- 3-second callback so the menu is always built once DCS has fully
+        -- populated the unit's player data.
         local unitName = unit:getName()
         local group    = unit:getGroup()
         if not group then return end
@@ -3186,7 +3190,7 @@ timer.scheduleFunction(function() startupScanPlayers(); return nil end, nil, tim
 ATC.retryAddMenus()  -- Run immediately on load
 
 -- Also schedule periodic rebuilds as before
- timer.scheduleFunction(ATC.retryAddMenus, {}, timer.getTime() + 5)
+timer.scheduleFunction(ATC.retryAddMenus, {}, timer.getTime() + 5)
 
 -- Schedule periodic vectoring updates (approach phase, >ilsHandoffNM)
 -- Polls every 1 second so gate crossings (farNM / nearNM) are detected
@@ -3507,7 +3511,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
     -- Phase: if already inside the racetrack gate, go outbound first;
     -- otherwise fly toward entry point (roughly inbound direction).
     if not rec.holdPhase then rec.holdPhase = {} end
-    local holdPhase = rec.holdPhase[airbaseName]
+    local initDist = ATC.distUnitToBase(unit, ab) or 0
 
     -- No speed instruction while still en route to the hold gate
     holdGate.noSpeed = initDist > farNM
@@ -3542,6 +3546,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
         unitName, airbaseName, initDist, assignedAlt,
         toEntryHdg, outboundHdg, rec.holdPhase[airbaseName]))
 
+    rec.holdPhase[airbaseName] = "inbound"
     ATC.issueVectorInstruction(unitName, rec, unit, abPos, holdGate,
         toEntryHdg, timer.getTime(), airbaseName)
 end
