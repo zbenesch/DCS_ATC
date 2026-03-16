@@ -1596,20 +1596,20 @@ ATC._phraseDur = {
     ["alice/bandar"] = 0.56,
     ["alice/base-heading"] = 0.6,
     ["alice/bateen"] = 0.65,
-    ["alice/batumi"] = 0.74,
+    ["alice/batumi"] = 0.93,
     ["alice/beirut"] = 0.65,
     ["alice/beslan"] = 1.16,
     ["alice/bone"] = 0.79,
     ["alice/bravo"] = 0.7,
     ["alice/cairo"] = 0.7,
     ["alice/carpiquet"] = 1.16,
-    ["alice/charlie"] = 0.98,
+    ["alice/charlie"] = 1.25,
     ["alice/check-gear-down-and-locked"] = 0.65,
     ["alice/chevy"] = 0.51,
     ["alice/cleared-for-the-approach"] = 1.25,
     ["alice/climb-immediately-runway-heading"] = 1.02,
     ["alice/climb-to"] = 0.79,
-    ["alice/cobra"] = 0.7,
+    ["alice/cobra"] = 0.74,
     ["alice/colt"] = 0.98,
     ["alice/contact"] = 0.65,
     ["alice/continue-approach"] = 1.25,
@@ -1618,17 +1618,17 @@ ATC._phraseDur = {
     ["alice/delta"] = 0.88,
     ["alice/departure"] = 0.7,
     ["alice/descend-to"] = 0.65,
-    ["alice/devil"] = 0.65,
+    ["alice/devil"] = 1.76,
     ["alice/dhabi"] = 0.84,
     ["alice/dhafra"] = 0.56,
     ["alice/dodge"] = 1.49,
     ["alice/dubai"] = 0.7,
-    ["alice/dude"] = 0.65,
-    ["alice/eagle"] = 0.88,
+    ["alice/dude"] = 1.25,
+    ["alice/eagle"] = 0.93,
     ["alice/echo"] = 0.84,
     ["alice/eight"] = 1.07,
     ["alice/eilat"] = 0.6,
-    ["alice/enfield"] = 1.02,
+    ["alice/enfield"] = 0.98,
     ["alice/erbil"] = 0.88,
     ["alice/established-on-final"] = 0.65,
     ["alice/evreux"] = 0.7,
@@ -1637,29 +1637,29 @@ ATC._phraseDur = {
     ["alice/feet"] = 0.56,
     ["alice/five"] = 0.7,
     ["alice/fly-heading"] = 0.79,
-    ["alice/follow"] = 0.74,
-    ["alice/for"] = 0.74,
-    ["alice/ford"] = 1.11,
+    ["alice/follow"] = 1.72,
+    ["alice/for"] = 1.53,
+    ["alice/ford"] = 0.84,
     ["alice/four"] = 1.11,
     ["alice/foxtrot"] = 1.02,
-    ["alice/from-threshold"] = 0.42,
-    ["alice/fujairah"] = 0.88,
-    ["alice/gelendzhik"] = 0.7,
+    ["alice/from-threshold"] = 1.07,
+    ["alice/fujairah"] = 0.74,
+    ["alice/gelendzhik"] = 0.65,
     ["alice/ghost"] = 0.98,
-    ["alice/go-around-go-around"] = 0.6,
+    ["alice/go-around-go-around"] = 1.21,
     ["alice/golf"] = 0.65,
     ["alice/ground"] = 0.88,
     ["alice/gudauta"] = 0.65,
-    ["alice/haifa"] = 1.11,
-    ["alice/halab"] = 0.84,
-    ["alice/hatay"] = 0.6,
+    ["alice/haifa"] = 0.84,
+    ["alice/halab"] = 0.79,
+    ["alice/hatay"] = 0.93,
     ["alice/hawg"] = 0.6,
-    ["alice/hawk"] = 0.51,
+    ["alice/hawk"] = 1.11,
     ["alice/hold"] = 1.11,
     ["alice/hotel"] = 0.74,
     ["alice/incirlik"] = 0.79,
     ["alice/increase-speed-to"] = 0.79,
-    ["alice/india"] = 1.07,
+    ["alice/india"] = 0.79,
     ["alice/jedi"] = 0.65,
     ["alice/jiroft"] = 0.6,
     ["alice/juliet"] = 0.98,
@@ -1668,108 +1668,108 @@ ATC._phraseDur = {
     ["alice/kerman"] = 0.65,
     ["alice/kilo"] = 0.88,
     ["alice/kirkuk"] = 0.65,
-    ["alice/kish"] = 0.51,
-    ["alice/knots"] = 0.56,
+    ["alice/kish"] = 0.88,
+    ["alice/knots"] = 0.6,
     ["alice/kobuleti"] = 1.11,
-    ["alice/kolkhi"] = 0.65,
-    ["alice/krasnodar"] = 0.88,
-    ["alice/krymsk"] = 0.74,
+    ["alice/kolkhi"] = 0.93,
+    ["alice/krasnodar"] = 0.79,
+    ["alice/krymsk"] = 1.07,
     ["alice/kutaisi"] = 0.88,
     ["alice/lancer"] = 0.7,
     ["alice/lar"] = 0.6,
-    ["alice/lavan"] = 0.6,
+    ["alice/lavan"] = 0.93,
     ["alice/left"] = 0.79,
     ["alice/lima"] = 0.84,
-    ["alice/lincoln"] = 0.56,
-    ["alice/lobo"] = 0.65,
-    ["alice/lochini"] = 1.02,
-    ["alice/maintain"] = 0.93,
-    ["alice/mako"] = 0.65,
-    ["alice/maktoum"] = 0.7,
-    ["alice/maykop"] = 0.7,
+    ["alice/lincoln"] = 0.88,
+    ["alice/lobo"] = 1.02,
+    ["alice/lochini"] = 0.84,
+    ["alice/maintain"] = 1.21,
+    ["alice/mako"] = 0.74,
+    ["alice/maktoum"] = 1.49,
+    ["alice/maykop"] = 0.98,
     ["alice/mike"] = 0.79,
-    ["alice/mineralnye"] = 1.11,
-    ["alice/minhad"] = 0.7,
-    ["alice/mozdok"] = 0.65,
-    ["alice/murmansk"] = 0.74,
-    ["alice/musa"] = 0.6,
-    ["alice/nalchik"] = 0.79,
-    ["alice/nautical-miles"] = 1.44,
+    ["alice/mineralnye"] = 0.74,
+    ["alice/minhad"] = 0.93,
+    ["alice/mozdok"] = 1.11,
+    ["alice/murmansk"] = 1.07,
+    ["alice/musa"] = 0.84,
+    ["alice/nalchik"] = 0.84,
+    ["alice/nautical-miles"] = 0.98,
     ["alice/niner"] = 0.56,
     ["alice/normandy"] = 0.98,
     ["alice/november"] = 0.74,
-    ["alice/novorossiysk"] = 0.93,
+    ["alice/novorossiysk"] = 1.02,
     ["alice/number"] = 0.7,
     ["alice/olds"] = 0.7,
-    ["alice/on-base-runway"] = 1.35,
+    ["alice/on-base-runway"] = 0.74,
     ["alice/one"] = 0.74,
-    ["alice/on-this-frequency"] = 1.35,
+    ["alice/on-this-frequency"] = 0.79,
     ["alice/oscar"] = 0.56,
     ["alice/out"] = 0.6,
     ["alice/ovda"] = 0.65,
     ["alice/panther"] = 0.74,
     ["alice/papa"] = 0.65,
-    ["alice/pashkovsky"] = 1.16,
-    ["alice/pontiac"] = 0.79,
-    ["alice/qeshm"] = 0.7,
-    ["alice/quebec"] = 0.7,
-    ["alice/radar-contact"] = 1.16,
-    ["alice/ramat"] = 0.98,
-    ["alice/reaper"] = 0.65,
-    ["alice/rebel"] = 0.51,
-    ["alice/reduce-speed-to"] = 1.25,
-    ["alice/report-final"] = 1.02,
+    ["alice/pashkovsky"] = 1.58,
+    ["alice/pontiac"] = 0.84,
+    ["alice/qeshm"] = 1.58,
+    ["alice/quebec"] = 0.93,
+    ["alice/radar-contact"] = 0.93,
+    ["alice/ramat"] = 0.7,
+    ["alice/reaper"] = 0.88,
+    ["alice/rebel"] = 1.02,
+    ["alice/reduce-speed-to"] = 0.74,
+    ["alice/report-final"] = 0.93,
     ["alice/right"] = 0.79,
     ["alice/romeo"] = 0.7,
     ["alice/runway"] = 0.65,
     ["alice/runway-clear"] = 0.98,
-    ["alice/sakirpasa"] = 1.25,
+    ["alice/sakirpasa"] = 1.02,
     ["alice/senaki"] = 0.79,
-    ["alice/seven"] = 0.56,
+    ["alice/seven"] = 0.93,
     ["alice/sharjah"] = 0.88,
     ["alice/shark"] = 0.7,
     ["alice/shiraz"] = 0.65,
     ["alice/sierra"] = 0.65,
     ["alice/sirri"] = 0.84,
     ["alice/six"] = 0.56,
-    ["alice/slow-to-approach-speed"] = 1.49,
+    ["alice/slow-to-approach-speed"] = 0.88,
     ["alice/sniper"] = 0.7,
-    ["alice/sochi"] = 0.65,
+    ["alice/sochi"] = 0.88,
     ["alice/soganlug"] = 0.88,
-    ["alice/speed"] = 0.84,
-    ["alice/springfield"] = 1.07,
-    ["alice/storm"] = 0.6,
-    ["alice/sukhumi"] = 1.02,
-    ["alice/taftanaz"] = 0.88,
-    ["alice/talon"] = 0.65,
-    ["alice/tango"] = 0.7,
-    ["alice/tbilisi"] = 0.84,
-    ["alice/three"] = 0.56,
+    ["alice/speed"] = 0.98,
+    ["alice/springfield"] = 1.44,
+    ["alice/storm"] = 0.84,
+    ["alice/sukhumi"] = 0.84,
+    ["alice/taftanaz"] = 1.07,
+    ["alice/talon"] = 0.98,
+    ["alice/tango"] = 0.84,
+    ["alice/tbilisi"] = 1.07,
+    ["alice/three"] = 0.88,
     ["alice/tiger"] = 0.7,
     ["alice/tower"] = 0.79,
     ["alice/traffic"] = 0.74,
     ["alice/tunb"] = 0.74,
-    ["alice/turn-final-heading"] = 1.11,
+    ["alice/turn-final-heading"] = 0.79,
     ["alice/turn-left-heading"] = 1.11,
-    ["alice/turn-right-heading"] = 1.02,
-    ["alice/two"] = 0.42,
-    ["alice/uniform"] = 0.88,
-    ["alice/uzi"] = 0.7,
-    ["alice/vaziani"] = 0.98,
+    ["alice/turn-right-heading"] = 0.88,
+    ["alice/two"] = 1.16,
+    ["alice/uniform"] = 0.93,
+    ["alice/uzi"] = 1.11,
+    ["alice/vaziani"] = 0.93,
     ["alice/venom"] = 0.6,
-    ["alice/victor"] = 0.65,
-    ["alice/viper"] = 0.65,
-    ["alice/vityazevo"] = 1.11,
+    ["alice/victor"] = 0.93,
+    ["alice/viper"] = 0.79,
+    ["alice/vityazevo"] = 0.79,
     ["alice/vody"] = 0.84,
-    ["alice/weasel"] = 0.6,
-    ["alice/whiskey"] = 0.6,
-    ["alice/witch"] = 0.51,
-    ["alice/wolf"] = 0.74,
+    ["alice/weasel"] = 0.88,
+    ["alice/whiskey"] = 0.93,
+    ["alice/witch"] = 0.98,
+    ["alice/wolf"] = 0.93,
     ["alice/xray"] = 0.79,
     ["alice/yankee"] = 0.79,
-    ["alice/you-are-number"] = 1.07,
-    ["alice/zero"] = 0.65,
-    ["alice/zulu"] = 0.6,
+    ["alice/you-are-number"] = 0.79,
+    ["alice/zero"] = 1.16,
+    ["alice/zulu"] = 1.02,
     ["daniel/abbas"] = 0.84,
     ["daniel/abeam-the-threshold"] = 0.88,
     ["daniel/abu"] = 1.02,
@@ -1812,7 +1812,7 @@ ATC._phraseDur = {
     ["daniel/departure"] = 0.88,
     ["daniel/descend-to"] = 0.93,
     ["daniel/devil"] = 1.76,
-    ["daniel/dhabi"] = 0.88,
+    ["daniel/dhabi"] = 0.84,
     ["daniel/dhafra"] = 0.88,
     ["daniel/dodge"] = 1.11,
     ["daniel/dubai"] = 0.93,
@@ -1833,14 +1833,14 @@ ATC._phraseDur = {
     ["daniel/follow"] = 1.72,
     ["daniel/for"] = 1.53,
     ["daniel/ford"] = 0.84,
-    ["daniel/four"] = 0.93,
-    ["daniel/foxtrot"] = 1.07,
+    ["daniel/four"] = 1.11,
+    ["daniel/foxtrot"] = 1.02,
     ["daniel/from-threshold"] = 1.07,
     ["daniel/fujairah"] = 0.74,
     ["daniel/gelendzhik"] = 0.65,
     ["daniel/ghost"] = 0.84,
     ["daniel/go-around-go-around"] = 1.21,
-    ["daniel/golf"] = 0.84,
+    ["daniel/golf"] = 0.65,
     ["daniel/ground"] = 0.84,
     ["daniel/gudauta"] = 0.84,
     ["daniel/haifa"] = 0.84,
@@ -1867,7 +1867,7 @@ ATC._phraseDur = {
     ["daniel/kolkhi"] = 0.93,
     ["daniel/krasnodar"] = 0.79,
     ["daniel/krymsk"] = 1.07,
-    ["daniel/kutaisi"] = 0.98,
+    ["daniel/kutaisi"] = 0.88,
     ["daniel/lancer"] = 0.93,
     ["daniel/lar"] = 0.84,
     ["daniel/lavan"] = 0.93,
@@ -1880,7 +1880,7 @@ ATC._phraseDur = {
     ["daniel/mako"] = 0.74,
     ["daniel/maktoum"] = 1.49,
     ["daniel/maykop"] = 0.98,
-    ["daniel/mike"] = 0.88,
+    ["daniel/mike"] = 0.79,
     ["daniel/mineralnye"] = 0.74,
     ["daniel/minhad"] = 0.93,
     ["daniel/mozdok"] = 1.11,
@@ -1888,20 +1888,20 @@ ATC._phraseDur = {
     ["daniel/musa"] = 0.84,
     ["daniel/nalchik"] = 0.84,
     ["daniel/nautical-miles"] = 0.98,
-    ["daniel/niner"] = 1.02,
-    ["daniel/normandy"] = 0.7,
-    ["daniel/november"] = 0.84,
+    ["daniel/niner"] = 0.56,
+    ["daniel/normandy"] = 0.98,
+    ["daniel/november"] = 0.74,
     ["daniel/novorossiysk"] = 1.02,
-    ["daniel/number"] = 0.88,
+    ["daniel/number"] = 0.7,
     ["daniel/olds"] = 0.93,
     ["daniel/on-base-runway"] = 0.74,
     ["daniel/one"] = 0.79,
     ["daniel/on-this-frequency"] = 0.79,
-    ["daniel/oscar"] = 0.7,
-    ["daniel/out"] = 0.65,
-    ["daniel/ovda"] = 0.74,
-    ["daniel/panther"] = 0.93,
-    ["daniel/papa"] = 0.74,
+    ["daniel/oscar"] = 0.56,
+    ["daniel/out"] = 0.6,
+    ["daniel/ovda"] = 0.65,
+    ["daniel/panther"] = 0.74,
+    ["daniel/papa"] = 0.65,
     ["daniel/pashkovsky"] = 1.58,
     ["daniel/pontiac"] = 0.84,
     ["daniel/qeshm"] = 1.58,
@@ -1913,20 +1913,20 @@ ATC._phraseDur = {
     ["daniel/reduce-speed-to"] = 0.74,
     ["daniel/report-final"] = 0.93,
     ["daniel/right"] = 0.6,
-    ["daniel/romeo"] = 0.84,
-    ["daniel/runway"] = 1.07,
-    ["daniel/runway-clear"] = 0.79,
+    ["daniel/romeo"] = 0.7,
+    ["daniel/runway"] = 0.65,
+    ["daniel/runway-clear"] = 0.98,
     ["daniel/sakirpasa"] = 1.02,
-    ["daniel/senaki"] = 1.02,
+    ["daniel/senaki"] = 0.79,
     ["daniel/seven"] = 0.93,
-    ["daniel/sharjah"] = 0.79,
-    ["daniel/shark"] = 0.98,
-    ["daniel/shiraz"] = 1.02,
-    ["daniel/sierra"] = 0.84,
-    ["daniel/sirri"] = 0.93,
-    ["daniel/six"] = 0.84,
+    ["daniel/sharjah"] = 0.88,
+    ["daniel/shark"] = 0.7,
+    ["daniel/shiraz"] = 0.65,
+    ["daniel/sierra"] = 0.65,
+    ["daniel/sirri"] = 0.84,
+    ["daniel/six"] = 0.56,
     ["daniel/slow-to-approach-speed"] = 0.88,
-    ["daniel/sniper"] = 0.84,
+    ["daniel/sniper"] = 0.7,
     ["daniel/sochi"] = 0.88,
     ["daniel/soganlug"] = 0.88,
     ["daniel/speed"] = 0.98,
@@ -1938,18 +1938,18 @@ ATC._phraseDur = {
     ["daniel/tango"] = 0.84,
     ["daniel/tbilisi"] = 1.07,
     ["daniel/three"] = 0.88,
-    ["daniel/tiger"] = 0.84,
-    ["daniel/tower"] = 0.84,
-    ["daniel/traffic"] = 0.79,
-    ["daniel/tunb"] = 0.84,
+    ["daniel/tiger"] = 0.7,
+    ["daniel/tower"] = 0.79,
+    ["daniel/traffic"] = 0.74,
+    ["daniel/tunb"] = 0.74,
     ["daniel/turn-final-heading"] = 0.79,
-    ["daniel/turn-left-heading"] = 1.02,
+    ["daniel/turn-left-heading"] = 1.11,
     ["daniel/turn-right-heading"] = 0.88,
     ["daniel/two"] = 1.16,
     ["daniel/uniform"] = 0.93,
     ["daniel/uzi"] = 1.11,
     ["daniel/vaziani"] = 0.93,
-    ["daniel/venom"] = 0.7,
+    ["daniel/venom"] = 0.6,
     ["daniel/victor"] = 0.93,
     ["daniel/viper"] = 0.79,
     ["daniel/vityazevo"] = 0.79,
@@ -1958,8 +1958,8 @@ ATC._phraseDur = {
     ["daniel/whiskey"] = 0.93,
     ["daniel/witch"] = 0.98,
     ["daniel/wolf"] = 0.93,
-    ["daniel/xray"] = 1.07,
-    ["daniel/yankee"] = 0.93,
+    ["daniel/xray"] = 0.79,
+    ["daniel/yankee"] = 0.79,
     ["daniel/you-are-number"] = 0.79,
     ["daniel/zero"] = 1.16,
     ["daniel/zulu"] = 1.02,
@@ -1988,7 +1988,9 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
     for i, token in ipairs(tokens) do
         local dur  = ATC._phraseDur[voice .. "/" .. token] or 0.45
         local name = string.format("ATC_%d_%d", seqId, i)
-        local path = string.format("%s/%s.ogg", voice, token)
+        local lfs = require('lfs')
+        local basePath = lfs.writedir() .. "Mods/Services/DCS-ATC/phrases/"
+        local path = string.format("%s%s/%s.ogg", basePath, voice, token)
         -- Capture loop variables for scheduler closure
         local _pos, _f, _n, _p = abPos, freqHz, name, path
         timer.scheduleFunction(function()
@@ -2304,7 +2306,7 @@ function ATC.getPatternAltFt(rwy, leg, distNM)
 end
 
 --- Define approach gates for stepped descent.
---- Returns array of gates: { altFt, speedKt, distNM }
+--- Returns array of gates: { altFt, speedKt, distNM, name } descending to pattern
 --- Gates are ordered from furthest to closest.
 --- BMS-aligned approach-stack constants (altitudes are AGL offsets, feet).
 -- Field MSL = field elevation + AGL value.
@@ -2838,11 +2840,8 @@ function ATC.onTakeoffRequest(arg)
     local fs = ATC.getFieldState(airbaseName)
 
     if not fs.rwyClear then
-        ATC.msg(rec.groupId, string.format(
-            "%s\n"                                 ..
-            "Hold position.  Runway not clear.\n"  ..
-            "Standby for takeoff clearance.",
-            preamble(unitName, airbaseName, "Tower")))
+        local msg = ATC.phrasesMilitary.departure.hold
+        ATC.msg(rec.groupId, string.format("%s\n%s", preamble(unitName, airbaseName, "Tower"), msg))
         return
     end
 
@@ -2854,20 +2853,15 @@ function ATC.onTakeoffRequest(arg)
 
     local qpos = #fs.departSeq
     if qpos == 1 then
-        ATC.msg(rec.groupId, string.format(
-            "%s\n"                                           ..
-            "Runway clear, cleared for takeoff.\n"           ..
-            "Wind calm.  Fly runway heading after departure.",
-            preamble(unitName, airbaseName, "Tower")))
+        local msg = ATC.phrasesMilitary.departure.cleared
+        ATC.msg(rec.groupId, string.format("%s\n%s", preamble(unitName, airbaseName, "Tower"), msg))
         fs.rwyClear = false
         ATC.setPhase(unitName, airbaseName, "takeoff")
         ATC.setEngagedField(unitName, airbaseName)
         ATC.msgAll(string.format("[Traffic]  %s is taking off at %s.", cs, airbaseName))
     else
-        ATC.msg(rec.groupId, string.format(
-            "%s\n"                                  ..
-            "Hold short.  Number %s for departure.",
-            preamble(unitName, airbaseName, "Tower"), ATC.ordinal(qpos)))
+        local msg = string.format(ATC.phrasesMilitary.departure.number, ATC.ordinal(qpos))
+        ATC.msg(rec.groupId, string.format("%s\n%s", preamble(unitName, airbaseName, "Tower"), msg))
         ATC.setEngagedField(unitName, airbaseName)
     end
 end
@@ -2907,93 +2901,15 @@ function ATC.onInboundRequest(arg)
 
     local distStr = distNM and string.format("%.1f NM", distNM) or "position unknown"
     local altStr  = altFt  and string.format("%d ft",   altFt)  or "altitude unknown"
+    local spdStr  = spdKt  and string.format("%d kt",   spdKt)  or "unknown"
+    local seqStr  = seqN > 0 and ("  Number " .. ATC.ordinal(seqN) .. ".") or ""
 
-
-    -- Daytime greeting for first contact with Approach at this airbase
-    rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
-    local greeting = ""
-    if not rec.greeted[airbaseName]["Approach"] then
-        greeting = getDaytimeGreeting() .. ", " .. cs .. ". " .. airbaseName .. " Approach.\n"
-        rec.greeted[airbaseName]["Approach"] = true
-    end
-
-    local response
-    if seqN == 1 then
-        response = string.format(
-            "%s%s\n"                                              ..
-            "Radar contact.  %s out at %s.\n"                  ..
-            "Number 1 for landing.  Hold as assigned.\n"       ..
-            "Expect approach clearance.",
-            greeting,
-            preamble(unitName, airbaseName, "Approach"), distStr, altStr)
-        ATC.setPhase(unitName, airbaseName, "inbound")
-    else
-        local aheadName = fs.landingSeq[seqN - 1]
-        local aheadUnit = aheadName and Unit.getByName(aheadName)
-        local aheadCs   = aheadUnit and aheadUnit:getCallsign() or "preceding traffic"
-
-        response = string.format(
-            "%s%s\n"                                              ..
-            "Radar contact.  %s out at %s.\n"                   ..
-            "Number %s for landing.  Follow %s.\n"              ..
-            "Expect approach clearance when number 1.",
-            greeting,
-            preamble(unitName, airbaseName, "Approach"),
-            distStr, altStr, ATC.ordinal(seqN), aheadCs)
-        ATC.setPhase(unitName, airbaseName, "inbound")
-    end
-
-    -- Engage before any timers fire so phase/field state are consistent
-    ATC.setEngagedField(unitName, airbaseName)
-
-    local abPos = ATC.getAirbasePos(ab)
-
-    -- t = 0 : Pilot's check-in  (text only – this is the player speaking)
     ATC.msg(rec.groupId, string.format(
-        "%s Approach,  %s,  inbound for landing.\n%s at %s.",
-        airbaseName, cs, distStr, altStr))
-
-    -- t = 0 : Traffic board (text to all players)
-    ATC.msgAll(string.format("[Traffic]  %s inbound to %s, number %s.",
-        cs, airbaseName, ATC.ordinal(seqN)))
-
-    -- t = 5 : Approach controller reply — voice + text
-    local t1      = timer.getTime() + 5
-    local respDur = ATC.ttsDuration(response)
-
-    timer.scheduleFunction(function(p)
-        local r  = ATC.state.aircraft[p.unitName]
-        local u2 = Unit.getByName(p.unitName)
-        if not r or not u2 then return nil end
-        local ab2  = Airbase.getByName(p.airbaseName)
-        local pos2 = ab2 and ATC.getAirbasePos(ab2) or p.abPos
-        ATC.radioMsg(r.groupId, pos2, p.response, false, p.airbaseName, "Approach")
-        return nil
-    end, { unitName=unitName, airbaseName=airbaseName, response=response, abPos=abPos }, t1)
-
-    -- t = 5 + clip_duration + 0.5s gap : Initial radar vectors — voice + text
-    timer.scheduleFunction(function(p)
-        local r = ATC.state.aircraft[p.unitName]
-        if not r or not Unit.getByName(p.unitName) then return nil end
-        if ATC.getRunway(p.airbaseName) then
-            ATC.vectorToFinal(p.unitName, p.airbaseName)
-        end
-        return nil
-    end, { unitName=unitName, airbaseName=airbaseName }, t1 + respDur + 0.5)
-
-    -- t = vectors + 6s : If runway already clear when #1 checks in, issue approach clearance.
-    -- Delayed so the vector TTS finishes before the clearance call starts.
-    -- Guard: skip if #1 was already cleared (e.g. checkAndClearNext fired naturally).
-    timer.scheduleFunction(function(p)
-        local fs2  = ATC.state.airfields[p.airbaseName]
-        if not fs2 or not fs2.rwyClear then return nil end
-        local top  = fs2.landingSeq and fs2.landingSeq[1]
-        local topR = top and ATC.state.aircraft[top]
-        if topR and not (topR.landingCleared and topR.landingCleared[p.airbaseName]) then
-            ATC.checkAndClearNext(p.airbaseName)
-        end
-        return nil
-    end, { airbaseName=airbaseName }, t1 + respDur + 6)
+        "%s\n"                           ..
+        "Position: %s from field.\n"     ..
+        "Altitude: %s.  Speed: %s.%s",
+        preamble(unitName, airbaseName, getController(unitName, airbaseName)),
+        distStr, altStr, spdStr, seqStr))
 end
 
 -- ── F2 (airborne) – Position Report ─────────────────────────
@@ -3065,7 +2981,7 @@ function ATC.onGoAround(arg)
     ATC.setPhase(unitName, airbaseName, "goaround")
     -- Reset gear reminder and GS deviation state for the new circuit
     if rec.gearReminded    then rec.gearReminded[airbaseName]    = nil end
-    if rec.lastGSDev       then rec.lastGSDev[airbaseName]       = nil end
+    if rec.lastGSDev       then rec.lastGSDev    = {} end
     if rec.handedOffToTower then rec.handedOffToTower[airbaseName] = nil end
     if rec.approachGate    then rec.approachGate[airbaseName]    = nil end
     if rec.landingCleared  then rec.landingCleared[airbaseName]  = nil end
@@ -3267,7 +3183,10 @@ end
 timer.scheduleFunction(function() startupScanPlayers(); return nil end, nil, timer.getTime() + 3)
 
 -- Schedule periodic menu rebuild
-timer.scheduleFunction(ATC.retryAddMenus, {}, timer.getTime() + 5)
+ATC.retryAddMenus()  -- Run immediately on load
+
+-- Also schedule periodic rebuilds as before
+ timer.scheduleFunction(ATC.retryAddMenus, {}, timer.getTime() + 5)
 
 -- Schedule periodic vectoring updates (approach phase, >ilsHandoffNM)
 -- Polls every 1 second so gate crossings (farNM / nearNM) are detected
@@ -3368,15 +3287,15 @@ function ATC.checkGlideslopes()
 
                             -- ── 2. Gear + approach-speed reminder (once, cleared aircraft ≤8 NM) ──
                             if cleared and distNM <= 8 and not rec.gearReminded[abName] then
+                                local phrase = ATC.phrasesMilitary.arrival.wheelsDown
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
-                                    "%sslow to approach speed, %d kt.\n"   ..
-                                    "Check gear down and locked.  %.1f NM.",
+                                    "%sslow to approach speed, %d kt.\n%s  %.1f NM.",
                                     controllerCall(unitName, abName, controller),
-                                    spds.final, distNM),
+                                    spds.final, phrase, distNM),
                                     false, abName, controller)
                                 rec.gearReminded[abName] = true
                                 rec.lastGuidance[abName] = now
-
+                            end
                             -- ── 3. Speed too high on short final (cleared aircraft) ───────────────
                             elseif cleared and onFinal and spdKt and spdKt > spds.maxFinal then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -3387,60 +3306,6 @@ function ATC.checkGlideslopes()
                                     distNM, altFt and tostring(altFt) or "unknown"),
                                     false, abName, controller)
                                 rec.lastGuidance[abName] = now
-
-                            end  -- if/elseif gear-speed checks
-                        end  -- elseif rate_limit
-
-                        -- ── Pattern leg advisory (fires once per leg transition) ──────────
-                        -- Only fires when the player is on final approach (not in a racetrack hold).
-                        -- During holds, the inbound leg heading matches final — skip to avoid false calls.
-                        local inHold = rec.holdPhase and rec.holdPhase[abName]
-                        local rwy = ATC.runways[abName]
-                        if rwy and not inHold then
-                            local legs = ATC.getPatternLegs(rwy)
-                            local vel  = unit:getVelocity()
-                            local acHdg = nil
-                            if vel then
-                                acHdg = math.deg(math.atan2(vel.z, vel.x))
-                                if acHdg < 0 then acHdg = acHdg + 360 end
-                            end
-                            if legs and acHdg then
-                                if not rec.patternAdv then rec.patternAdv = {} end
-                                local prevAdv    = rec.patternAdv[abName]
-                                local rwyNum     = string.format("%02d", math.floor((rwy.hdg + 5) / 10))
-                                local trafficDir = (legs.dir == "R") and "right" or "left"
-                                local elev       = rwy.elevation or 0
-                                local entryAlt   = elev + ENTRY_BASE_AGL   -- 3000 AGL (downwind/base)
-                                local finalApproachAlt = elev + FINAL_AGL  -- 2000 AGL (final approach)
-
-                                -- Final: within 20° of runway heading, ≤8 NM (BMS final approach point)
-                                if math.abs(angleDiff(acHdg, legs.finalHdg)) <= 20
-                                and distNM <= 8 and prevAdv ~= "final" then
-                                    rec.patternAdv[abName] = "final"
-                                    ATC.radioMsg(rec.groupId, abPos, string.format(
-                                        "%sestablished on final, runway %s.\nContinue approach.",
-                                        controllerCall(unitName, abName, "Tower"), rwyNum), false, abName, "Tower")
-
-                                -- Base: within 25° of base heading, ≤10 NM, not yet called base or final
-                                elseif math.abs(angleDiff(acHdg, legs.baseHdg)) <= 25
-                                and distNM <= 10
-                                and prevAdv ~= "base" and prevAdv ~= "final" then
-                                    rec.patternAdv[abName] = "base"
-                                    ATC.radioMsg(rec.groupId, abPos, string.format(
-                                        "%son base, runway %s.\nTurn final heading %s.  Descend to %d ft.",
-                                        controllerCall(unitName, abName, "Tower"),
-                                        rwyNum, ATC.fmtHdg(ATC.toMag(legs.finalHdg)), finalApproachAlt), false, abName, "Tower")
-
-                                -- Downwind: within 30° of downwind heading, 5–15 NM, not yet called
-                                elseif math.abs(angleDiff(acHdg, legs.downwindHdg)) <= 30
-                                and distNM <= 15 and distNM > 5 and prevAdv == nil then
-                                    rec.patternAdv[abName] = "downwind"
-                                    ATC.radioMsg(rec.groupId, abPos, string.format(
-                                        "%sabeam the threshold, runway %s, %s traffic.\nDescend to %d ft.  Base heading %s.",
-                                        controllerCall(unitName, abName, "Approach"),
-                                        rwyNum, trafficDir, entryAlt,
-                                        ATC.fmtHdg(ATC.toMag(legs.baseHdg))), false, abName, "Approach")
-                                end
                             end
                         end
                     end
@@ -3642,8 +3507,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
     -- Phase: if already inside the racetrack gate, go outbound first;
     -- otherwise fly toward entry point (roughly inbound direction).
     if not rec.holdPhase then rec.holdPhase = {} end
-    local initDist = ATC.mToNM(ATC.distVec3H(uPos, abPos))
-    rec.holdPhase[airbaseName] = initDist <= farNM and "outbound" or "inbound"
+    local holdPhase = rec.holdPhase[airbaseName]
 
     -- No speed instruction while still en route to the hold gate
     holdGate.noSpeed = initDist > farNM
