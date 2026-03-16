@@ -1120,21 +1120,6 @@ function ATC.getOrCreateRecord(unitName, groupId)
             landingCleared = {}, -- [airbaseName] = true once "cleared for approach/landing" issued
             holdPhase      = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             greeted        = {}, -- [airbaseName][controller] = true if greeted
-        -- Helper: Get daytime greeting string based on in-game time
-        local function getDaytimeGreeting()
-            -- DCS time is seconds since mission start; get hour from env.mission or timer.getAbsTime if available
-            local hour = 12
-            if env and env.mission and env.mission.date and env.mission.start_time then
-                -- Use mission start time if available
-                local t = env.mission.start_time
-                hour = math.floor((t / 3600) % 24)
-            elseif timer and timer.getAbsTime then
-                hour = math.floor((timer.getAbsTime() / 3600) % 24)
-            end
-            if hour < 12 then return "Good morning"
-            elseif hour < 18 then return "Good afternoon"
-            else return "Good evening" end
-        end
         }
     end
     return ATC.state.aircraft[unitName]
@@ -2796,6 +2781,20 @@ local function getController(unitName, airbaseName)
 end
 
 -- ── F1 (ground) – Request Taxi ───────────────────────────────
+-- Helper: returns a time-of-day greeting based on the DCS in-game clock.
+local function getDaytimeGreeting()
+    local hour = 12
+    if env and env.mission and env.mission.date and env.mission.start_time then
+        local t = env.mission.start_time
+        hour = math.floor((t / 3600) % 24)
+    elseif timer and timer.getAbsTime then
+        hour = math.floor((timer.getAbsTime() / 3600) % 24)
+    end
+    if hour < 12 then return "Good morning"
+    elseif hour < 18 then return "Good afternoon"
+    else return "Good evening" end
+end
+
 function ATC.onTaxiRequest(arg)
     local unitName    = arg.unitName
     local airbaseName = arg.airbaseName
