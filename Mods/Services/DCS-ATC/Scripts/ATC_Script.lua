@@ -1119,6 +1119,22 @@ function ATC.getOrCreateRecord(unitName, groupId)
             stackAlt      = {},  -- [airbaseName] = assigned hold altitude (ft)
             landingCleared = {}, -- [airbaseName] = true once "cleared for approach/landing" issued
             holdPhase      = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
+            greeted        = {}, -- [airbaseName][controller] = true if greeted
+        -- Helper: Get daytime greeting string based on in-game time
+        local function getDaytimeGreeting()
+            -- DCS time is seconds since mission start; get hour from env.mission or timer.getAbsTime if available
+            local hour = 12
+            if env and env.mission and env.mission.date and env.mission.start_time then
+                -- Use mission start time if available
+                local t = env.mission.start_time
+                hour = math.floor((t / 3600) % 24)
+            elseif timer and timer.getAbsTime then
+                hour = math.floor((timer.getAbsTime() / 3600) % 24)
+            end
+            if hour < 12 then return "Good morning"
+            elseif hour < 18 then return "Good afternoon"
+            else return "Good evening" end
+        end
         }
     end
     return ATC.state.aircraft[unitName]
@@ -1137,8 +1153,30 @@ end
 -- ============================================================
 
 --- Send a text message to one group only.
-function ATC.msg(groupId, text, long)
-    local dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
+
+-- Calculate the total OGG duration for a message (in seconds)
+local function getVoiceDuration(text, abName, controller)
+    -- Try to match the voice used for this controller/airbase
+    local voice = "david"
+    if abName and controller then
+        voice = ATC.getStationVoice(abName, controller)
+    end
+    local tokens = ATC.textToTokens(text)
+    local total = 0
+    for _, token in ipairs(tokens) do
+        total = total + (ATC._phraseDur[voice .. "/" .. token] or 0.45) + 0.05 -- 50ms gap
+    end
+    return math.max(total, 2.0) -- never less than 2s
+end
+
+function ATC.msg(groupId, text, long, abName, controller)
+    -- If abName/controller provided, use OGG duration for display time
+    local dur
+    if abName and controller then
+        dur = getVoiceDuration(text, abName, controller)
+    else
+        dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
+    end
     trigger.action.outTextForGroup(groupId, text, dur, false)
 end
 
@@ -2147,7 +2185,12 @@ end
 -- @param abName     string|nil airbase name (for frequency and voice selection)
 -- @param controller string|nil "Approach"|"Tower"|"Ground"|"Departure" (default "Approach")
 function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
-    ATC.msg(groupId, text, long)    -- on-screen text unchanged
+    -- Use OGG duration for display time if possible
+    local dur = nil
+    if abName and controller then
+        dur = getVoiceDuration(text, abName, controller)
+    end
+    ATC.msg(groupId, text, long, abName, controller)
 
     if abPos and abName then
         local rwy      = ATC.runways[abName]
@@ -2762,11 +2805,20 @@ function ATC.onTaxiRequest(arg)
     if not ATC.isPlayer(unit) then return end
     local cs = unit:getCallsign() or unitName
 
+
+    -- Daytime greeting for first contact with Ground at this airbase
+    rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
+    local greeting = ""
+    if not rec.greeted[airbaseName]["Ground"] then
+        greeting = getDaytimeGreeting() .. ", " .. cs .. ". " .. airbaseName .. " Ground.\n"
+        rec.greeted[airbaseName]["Ground"] = true
+    end
     ATC.msg(rec.groupId, string.format(
-        "%s\n"                                     ..
+        "%s%s\n"                                     ..
         "Taxi to holding point, runway in use.\n"  ..
         "Wind calm.  QNH check.\n"                 ..
         "Monitor this frequency.",
+        greeting,
         preamble(unitName, airbaseName, "Ground")))
 
     ATC.setPhase(unitName, airbaseName, "taxi")
@@ -2856,13 +2908,23 @@ function ATC.onInboundRequest(arg)
     local distStr = distNM and string.format("%.1f NM", distNM) or "position unknown"
     local altStr  = altFt  and string.format("%d ft",   altFt)  or "altitude unknown"
 
+
+    -- Daytime greeting for first contact with Approach at this airbase
+    rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
+    local greeting = ""
+    if not rec.greeted[airbaseName]["Approach"] then
+        greeting = getDaytimeGreeting() .. ", " .. cs .. ". " .. airbaseName .. " Approach.\n"
+        rec.greeted[airbaseName]["Approach"] = true
+    end
+
     local response
     if seqN == 1 then
         response = string.format(
-            "%s\n"                                              ..
+            "%s%s\n"                                              ..
             "Radar contact.  %s out at %s.\n"                  ..
             "Number 1 for landing.  Hold as assigned.\n"       ..
             "Expect approach clearance.",
+            greeting,
             preamble(unitName, airbaseName, "Approach"), distStr, altStr)
         ATC.setPhase(unitName, airbaseName, "inbound")
     else
@@ -2871,10 +2933,11 @@ function ATC.onInboundRequest(arg)
         local aheadCs   = aheadUnit and aheadUnit:getCallsign() or "preceding traffic"
 
         response = string.format(
-            "%s\n"                                              ..
+            "%s%s\n"                                              ..
             "Radar contact.  %s out at %s.\n"                   ..
             "Number %s for landing.  Follow %s.\n"              ..
             "Expect approach clearance when number 1.",
+            greeting,
             preamble(unitName, airbaseName, "Approach"),
             distStr, altStr, ATC.ordinal(seqN), aheadCs)
         ATC.setPhase(unitName, airbaseName, "inbound")
