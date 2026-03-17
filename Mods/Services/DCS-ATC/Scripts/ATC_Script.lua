@@ -1518,13 +1518,18 @@ end
 --- Look up runway data for an airbase. Returns nil if not in ATC.runways.
 
 --- Round a heading to the nearest 10 degrees (standard ATC readout).
+-- Returns 360 (not 0) for headings that round to north, matching aviation convention.
 function ATC.roundHdg(h)
-    return math.floor(h / 10 + 0.5) * 10 % 360
+    local r = math.floor(h / 10 + 0.5) * 10 % 360
+    return r == 0 and 360 or r
 end
 
---- Format a heading as a zero-padded 3-digit string ("090", "270", etc.)
+--- Format a heading as a zero-padded 3-digit string ("090", "360", etc.)
+-- Returns "360" (not "000") for north, matching aviation convention.
 function ATC.fmtHdg(h)
-    return string.format("%03d", math.floor(h + 0.5) % 360)
+    local r = math.floor(h + 0.5) % 360
+    if r == 0 then r = 360 end
+    return string.format("%03d", r)
 end
 
 --- Angle difference: signed, shortest path, -180 to +180.
@@ -3056,6 +3061,17 @@ function ATC.vectorToFinal(unitName, airbaseName)
         ATC.issueVectorInstruction(unitName, rec, unit, abPos, holdGate,
             toCRPHdg, timer.getTime(), airbaseName)
         return
+    end
+
+    -- Compute the initial heading to issue:
+    --   • Outside gate (initDist > farNM, phase="inbound"): fly direct to the racetrack
+    --     entry point so the aircraft joins the hold without an extra outbound leg.
+    --   • Inside gate (initDist ≤ farNM, phase="outbound"): start the outbound leg.
+    local toEntryHdg
+    if initDist > farNM then
+        toEntryHdg = ATC.getBearing(uPos, entryPos)
+    else
+        toEntryHdg = outboundHdg
     end
 
     ATC.log(string.format(
