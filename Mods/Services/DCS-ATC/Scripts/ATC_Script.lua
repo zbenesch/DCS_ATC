@@ -1,3 +1,37 @@
+-- Controller radio queueing and handler logic are now split into separate files for clarity.
+local ground = dofile("Mods/Services/DCS-ATC/Scripts/controllers/ground.lua")
+local tower = dofile("Mods/Services/DCS-ATC/Scripts/controllers/tower.lua")
+local approach = dofile("Mods/Services/DCS-ATC/Scripts/controllers/approach.lua")
+local departure = dofile("Mods/Services/DCS-ATC/Scripts/controllers/departure.lua")
+
+ATC.ground = require("Mods/Services/DCS-ATC/Scripts/controllers/ground.lua")
+ATC.tower = require("Mods/Services/DCS-ATC/Scripts/controllers/tower.lua")
+ATC.approach = require("Mods/Services/DCS-ATC/Scripts/controllers/approach.lua")
+ATC.departure = require("Mods/Services/DCS-ATC/Scripts/controllers/departure.lua")
+
+-- Only allow lead of group to make requests
+function ATC.isGroupLead(unit)
+    -- For now, assume unitName ends with -1 for lead (e.g., lobo 2-1)
+    local name = unit:getCallsign() or unit:getName() or ""
+    return name:match("%-1$") ~= nil
+end
+-- Helper: Get wind at airfield (returns heading and speed in knots)
+function ATC.getWind(abPos)
+    if env and env.mission and env.mission.weather and env.mission.weather.wind then
+        local wind = env.mission.weather.wind.atGround or { speed = 0, dir = 0 }
+        local speed = wind.speed or 0
+        local dir = wind.dir or 0
+        return dir, speed
+    end
+    return 0, 0
+end
+
+-- Helper: Check if runway is clear (no other aircraft present)
+function ATC.isRunwayClear(abName)
+    local fs = ATC.state.airfields[abName]
+    if not fs or not fs.rwyClear then return false end
+    return fs.rwyClear
+end
 trigger.action.outText("[ATC Script] Loaded", 10)
 -- ============================================================
 --  ATC_Script.lua  --  DCS World Air Traffic Control System
@@ -9,7 +43,6 @@ trigger.action.outText("[ATC Script] Loaded", 10)
 --  1. Open the DCS Mission Editor.
 --  2. Triggers → New Trigger:
 --       Type   : MISSION START
---       Action : DO SCRIPT FILE → select this file
 --  3. Save and fly.
 --
 --  HOW PLAYERS USE IT
@@ -51,106 +84,114 @@ ATC.menuPaths = {}  -- [coalitionID] = { root, ground, tower, approach, departur
 function ATC.ensureMenusForCoalition(coalitionID)
     if not coalitionID then return end
     ATC.menuPaths[coalitionID] = ATC.menuPaths[coalitionID] or {}
-    local paths = ATC.menuPaths[coalitionID]
-    if not paths.root then
-        paths.root = missionCommands.addSubMenuForCoalition(coalitionID, "[ATC] Air Traffic Control")
-        paths.ground = missionCommands.addSubMenuForCoalition(coalitionID, "Ground", paths.root)
-        paths.tower = missionCommands.addSubMenuForCoalition(coalitionID, "Tower", paths.root)
-        paths.approach = missionCommands.addSubMenuForCoalition(coalitionID, "Approach", paths.root)
-        paths.departure = missionCommands.addSubMenuForCoalition(coalitionID, "Departure", paths.root)
+    -- Airfield info, radio channels, runway heading, CRPs, etc. moved to Scripts/airfields.lua
+    local airfields = require("Mods/Services/DCS-ATC/Scripts/airfields.lua")
+    ATC.runways = airfields.runways
+    ATC.getWind = airfields.getWind
+    ATC.isRunwayClear = airfields.isRunwayClear
+    ATC.getRunway = airfields.getRunway
+    ATC.getRunwayFrequencies = airfields.getRunwayFrequencies
+    ATC.getRunwayControllers = airfields.getRunwayControllers
+    ATC.getFieldState = airfields.getFieldState
+    ATC.state = airfields.state
+    -- CRPs and other airfield utilities are now in airfields.lua
+    -- Vertical deviation (ft) before ATC calls "above/below glide path"
+    gsDeviationFt   = 200,
 
-        -- Helper to get player context for the calling group
-        local function getPlayerContext()
-            -- DCS passes groupId as the first argument to the handler
-            local groupId = trigger.misc.getUserFlag("__ATC_LAST_GROUP")
-            if not groupId then return nil end
-            local group = Group.getByID(groupId)
-            if not group then return nil end
-            local units = group:getUnits()
-            for _, unit in ipairs(units) do
-                if ATC.isPlayer(unit) then
-                    return unit, groupId
-                end
-            end
-            return nil
-        end
+    -- How often (seconds) glideslope / speed guidance is repeated per unit.
+    guidanceInterval = 30,
 
-        -- Wrapper for each menu command to call the correct handler for the player
-        local function wrapHandler(handler)
-            return function(...)
-                -- DCS does not pass groupId directly, so we use a workaround:
-                -- Set a user flag in a custom event handler (see below) before menu call
-                local unit, groupId = getPlayerContext()
-                if not unit then return end
-                local unitName = unit:getName()
-                -- Compose arg as expected by handler
-                local arg = { unitName = unitName, airbaseName = nil }
-                handler(arg)
-            end
-        end
+    -- Inside this distance (NM) checkGlideslopes activates.
+    -- Large enough to catch downwind legs (~15 NM) and gear reminders.
+    finalNM         = 20,
 
-        -- Ground
-        missionCommands.addCommandForCoalition(coalitionID, "Request Startup", paths.ground, wrapHandler(ATC.onRequestStartup or function() end))
-        missionCommands.addCommandForCoalition(coalitionID, "Request Taxi", paths.ground, wrapHandler(ATC.onTaxiRequest))
-        -- Tower
-        missionCommands.addCommandForCoalition(coalitionID, "Request Takeoff", paths.tower, wrapHandler(ATC.onTakeoffRequest))
-        missionCommands.addCommandForCoalition(coalitionID, "Ready for Departure", paths.tower, wrapHandler(ATC.onReadyDeparture))
-        missionCommands.addCommandForCoalition(coalitionID, "Request Landing / Inbound", paths.tower, wrapHandler(ATC.onInboundRequest))
-        -- Approach
-        missionCommands.addCommandForCoalition(coalitionID, "Request Approach", paths.approach, wrapHandler(ATC.onInboundRequest))
-        -- Departure
-        missionCommands.addCommandForCoalition(coalitionID, "Request Departure", paths.departure, wrapHandler(ATC.onReadyDeparture))
-        -- Add more as needed
-    end
-end
+    -- Airspeed (kt) below which an airborne unit gets a go-around warning.
+    stallWarnKt     = 80,
 
---- Periodically ensure menus exist for all coalitions
-function ATC.retryAddMenus()
-    -- Ensure coalition-level [ATC] menus exist
-    for _, coa in ipairs({coalition.side.BLUE, coalition.side.RED, coalition.side.NEUTRAL}) do
-        ATC.ensureMenusForCoalition(coa)
-    end
-    -- Build per-group menus for any player units not yet tracked.
-    -- This catches players who were already in slots when the script loaded
-    -- (BIRTH fired before event handler was registered).
-    local cats = { Group.Category.AIRPLANE, Group.Category.HELICOPTER }
-    for _, side in ipairs({ coalition.side.BLUE, coalition.side.RED, coalition.side.NEUTRAL }) do
-        for _, cat in ipairs(cats) do
-            for _, grp in ipairs(coalition.getGroups(side, cat) or {}) do
-                for _, u in ipairs(grp:getUnits() or {}) do
-                    if ATC.isPlayer(u) then
-                        local uName = u:getName()
-                        if not ATC.state.aircraft[uName] then
-                            ATC.getOrCreateRecord(uName, grp:getID())
-                            ATC.buildFullMenu(uName)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return timer.getTime() + 10
-end
+    -- ── Approach speed profiles (kt) by DCS unit type name ──────────────
+    -- Approach speed profiles are now loaded from Scripts/approachspeeds.lua
+    approachSpeeds = require("Mods/Services/DCS-ATC/Scripts/approachspeeds.lua"),
+
+    -- ── Menu labels ──────────────────────────────────────────
+    rootMenuLabel    = "[ATC] Nearby Fields",
+    menuRefreshLabel = "  Refresh Airfield List",
+
+    -- ── Scheduler ────────────────────────────────────────────
+    -- How often (seconds) the proximity list is re-evaluated.
+    refreshInterval = 10,
+
+    -- Minimum seconds between repeated queue-position broadcasts
+    -- to the same unit at the same airfield (anti-spam).
+    queueBroadcastInterval = 30,
+
+    -- ── Radar vectoring (Part 3) ─────────────────────────────
+    -- How often (seconds) vectoring calls are repeated while a pilot
+    -- is being worked around the pattern.
+    vectoringInterval = 25,
+
+    -- Distance (NM) of the final approach point.
+    -- Racetrack inbound leg turns here; checkGlideslopes + Tower take over inside.
+    ilsHandoffNM = 2,
+
+    -- Standard traffic pattern altitude AGL (ft) used when a field has no
+    -- specific patternAlt defined in ATC.runways.
+    defaultPatternAltFt = 1500,
+
+    -- ── Magnetic variation (degrees East) ────────────────────
+    -- TRUE = MAGNETIC + magvar  (positive = East, negative = West)
+    -- Caucasus / Black Sea: ~5° East.  Persian Gulf: ~2° East.  Syria: ~4° East.
+    -- All rwy.hdg / rwy.reciprocal values in ATC.runways are MAGNETIC (real-world
+    -- runway designators).  DCS world coords use TRUE north.  ATC voices MAGNETIC.
+    -- Map-specific magnetic variation (degrees East)
+    magvarCaucasus = 6,   -- Caucasus / Black Sea
+    magvarPG = 2,         -- Persian Gulf
+    magvarSyria = 4,      -- Syria
+    magvarDefault = 0,    -- Default fallback
+
+}
 
 -- ============================================================
--- 1.  CONFIG (moved back in place)
+-- 1a.  RADIO VOICE SYSTEM
 -- ============================================================
-ATC.config = {
-    -- ── Proximity filter ─────────────────────────────────────
-    -- Airbases further than this from the player are hidden.
-    nearRadiusM     = 100000,           -- 100 km in metres
+-- Voice is produced by trigger.action.radioTransmission playing
+-- pre-generated OGG phrase clips from the mod folder.
+-- Clips live at Mods\Services\DCS-ATC\phrases\<voice>\<token>.ogg
+-- entry.lua mounts that folder into the DCS sound VFS so clips are
+-- addressable as "<voice>/<token>.ogg" — no .miz injection required.
+-- Run Generate-Phrases.ps1 once to generate the phrase library.
+-- ============================================================
 
-    -- ── Display ──────────────────────────────────────────────
-    msgDuration     = 15,               -- seconds text stays on screen
-    msgDurationLong = 25,               -- for long messages (emergency etc.)
 
-    -- ── Traffic management ───────────────────────────────────
-    maxSequence     = 8,                -- max aircraft in landing sequence
-    separationNM    = 3,                -- target spacing between inbounds (NM)
+-- ============================================================
+-- ============================================================
+-- 1b.  RUNWAY DATA  (Part 3 – Radar Vectoring)
+-- ============================================================
+--[[
+  One entry per airbase name (must match DCS internal name exactly).
+  Fields:
+    hdg        – primary runway magnetic heading (degrees, 0-360)
+    reciprocal – opposite-end heading
+    elevation  – field elevation AMSL (feet)
+    ILSfreq    – ILS / localizer frequency (MHz), 0 if none
+    patternAlt – traffic pattern altitude AMSL (feet)
+                 If omitted, defaultPatternAltFt + elevation is used.
 
-    -- ── Glideslope / approach guidance (Part 2) ─────────────
-    gsAngleDeg      = 3.0,    -- default ILS glideslope angle (degrees)
-
+  These values are hardcoded because DCS scripting does not expose
+  runway heading or elevation via the API.  Add or correct entries
+  as needed for your theatre.  Fields not listed here will still
+  get queue/GS calls; they just won't receive heading/alt vectors.
+--]]
+-- All airfield info is now in Scripts/airfields.lua
+local airfields = require("Mods/Services/DCS-ATC/Scripts/airfields.lua")
+ATC.runways = airfields.runways
+ATC.getWind = airfields.getWind
+ATC.isRunwayClear = airfields.isRunwayClear
+ATC.getRunway = airfields.getRunway
+ATC.getRunwayFrequencies = airfields.getRunwayFrequencies
+ATC.getRunwayControllers = airfields.getRunwayControllers
+ATC.getFieldState = airfields.getFieldState
+ATC.state = airfields.state
+-- CRPs and other airfield utilities are now in airfields.lua
     -- Vertical deviation (ft) before ATC calls "above/below glide path"
     gsDeviationFt   = 200,
 
@@ -218,7 +259,7 @@ ATC.config = {
 
     -- ── Scheduler ────────────────────────────────────────────
     -- How often (seconds) the proximity list is re-evaluated.
-    refreshInterval = 15,
+    refreshInterval = 10,
 
     -- Minimum seconds between repeated queue-position broadcasts
     -- to the same unit at the same airfield (anti-spam).
@@ -229,9 +270,9 @@ ATC.config = {
     -- is being worked around the pattern.
     vectoringInterval = 25,
 
-    -- Distance (NM) of the final approach point (BMS: 8 NM aligned with runway).
+    -- Distance (NM) of the final approach point.
     -- Racetrack inbound leg turns here; checkGlideslopes + Tower take over inside.
-    ilsHandoffNM = 8,
+    ilsHandoffNM = 2,
 
     -- Standard traffic pattern altitude AGL (ft) used when a field has no
     -- specific patternAlt defined in ATC.runways.
@@ -242,7 +283,12 @@ ATC.config = {
     -- Caucasus / Black Sea: ~5° East.  Persian Gulf: ~2° East.  Syria: ~4° East.
     -- All rwy.hdg / rwy.reciprocal values in ATC.runways are MAGNETIC (real-world
     -- runway designators).  DCS world coords use TRUE north.  ATC voices MAGNETIC.
-    magvar = 6,
+    -- Map-specific magnetic variation (degrees East)
+    magvarCaucasus = 6,   -- Caucasus / Black Sea
+    magvarPG = 2,         -- Persian Gulf
+    magvarSyria = 4,      -- Syria
+    magvarDefault = 0,    -- Default fallback
+    -- Deprecated: magvar = 6,
 }
 
 -- ============================================================
@@ -276,779 +322,17 @@ ATC.config = {
   as needed for your theatre.  Fields not listed here will still
   get queue/GS calls; they just won't receive heading/alt vectors.
 --]]
-ATC.runways = {
-    -- ── Germany (The Channel, Normandy, etc.) ───────────────
-    ["Normandy Carpiquet"] = { hdg=260, reciprocal=80, elevation=256, ILSfreq=0, patternAlt=1756,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Normandy Evreux"] = { hdg=240, reciprocal=60, elevation=526, ILSfreq=0, patternAlt=2026,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    -- Add all other Germany map airports here...
-
-    -- ── Afghanistan ────────────────────────────────────────
-    ["Bagram"] = { hdg=120, reciprocal=300, elevation=4950, ILSfreq=0, patternAlt=6450,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    -- Add all other Afghanistan map airports here...
-
-    -- ── Iraq ───────────────────────────────────────────────
-    ["Baghdad Intl"] = { hdg=150, reciprocal=330, elevation=110, ILSfreq=0, patternAlt=1610,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    -- Add all other Iraq map airports here...
-
-    -- ── Kola ───────────────────────────────────────────────
-    ["Kola Murmansk"] = { hdg=180, reciprocal=0, elevation=150, ILSfreq=0, patternAlt=1650,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    -- Add all other Kola map airports here...
-
-    -- ── Sinai ──────────────────────────────────────────────
-    ["Sinai Cairo Intl"] = { hdg=200, reciprocal=20, elevation=382, ILSfreq=0, patternAlt=1882,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    -- Add all other Sinai map airports here...
-
-    -- ── Caucasus ─────────────────────────────────────────────
-    ["Batumi"]              = { hdg=130, reciprocal=310, elevation=32,   ILSfreq=110.30, patternAlt=1532,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Kobuleti"]            = { hdg=70,  reciprocal=250, elevation=59,   ILSfreq=111.50, patternAlt=1559, patternDir="R",
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true },
-        -- Circuit Reference Points from Kobuleti aerodrome chart (lat/lon decimal degrees)
-        -- rwyHdg matches ATC.runways[].hdg for the approach direction this CRP serves.
-        crps = {
-            { name="Black Sea", lat=42.018767, lon=41.752067, rwyHdg=70  },
-            { name="South",     lat=41.823583, lon=41.772667, rwyHdg=70  },
-            { name="NE",        lat=42.000733, lon=42.001550, rwyHdg=250 },
-            { name="East",      lat=41.909883, lon=42.007750, rwyHdg=250 },
-        },
-    },
-    ["Kutaisi"]             = { hdg=80,  reciprocal=260, elevation=147,  ILSfreq=109.75, patternAlt=1647,
-        frequencies = {
-            ground = { mhz=122.000, hz=122000000 },
-            tower = { mhz=118.900, hz=118900000 },
-            approach = { mhz=123.700, hz=123700000 },
-            departure = { mhz=124.400, hz=124400000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Senaki-Kolkhi"]       = { hdg=90,  reciprocal=270, elevation=43,   ILSfreq=108.90, patternAlt=1543,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Sukhumi"]             = { hdg=120, reciprocal=300, elevation=43,   ILSfreq=0,      patternAlt=1543,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Gudauta"]             = { hdg=150, reciprocal=330, elevation=68,   ILSfreq=0,      patternAlt=1568,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Sochi-Adler"]         = { hdg=60,  reciprocal=240, elevation=98,   ILSfreq=111.10, patternAlt=1598, patternDir="R",
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Gelendzhik"]          = { hdg=20,  reciprocal=200, elevation=72,   ILSfreq=0,      patternAlt=1572,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Anapa-Vityazevo"]     = { hdg=40,  reciprocal=220, elevation=144,  ILSfreq=0,      patternAlt=1644,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Krasnodar-Center"]    = { hdg=90,  reciprocal=270, elevation=98,   ILSfreq=0,      patternAlt=1598,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Krasnodar-Pashkovsky"]= { hdg=54,  reciprocal=234, elevation=108,  ILSfreq=0,      patternAlt=1608,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Krymsk"]              = { hdg=40,  reciprocal=220, elevation=65,   ILSfreq=0,      patternAlt=1565,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Novorossiysk"]        = { hdg=40,  reciprocal=220, elevation=131,  ILSfreq=0,      patternAlt=1631,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tbilisi-Lochini"]     = { hdg=130, reciprocal=310, elevation=1624, ILSfreq=110.30, patternAlt=3124,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Vaziani"]             = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=117.60, patternAlt=3023,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Soganlug"]            = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=0,      patternAlt=3023,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Beslan"]              = { hdg=100, reciprocal=280, elevation=1660, ILSfreq=110.50, patternAlt=3160,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Mozdok"]              = { hdg=80,  reciprocal=260, elevation=507,  ILSfreq=0,      patternAlt=2007,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Nalchik"]             = { hdg=90,  reciprocal=270, elevation=1410, ILSfreq=117.60, patternAlt=2910,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Mineralnye Vody"]     = { hdg=120, reciprocal=300, elevation=1049, ILSfreq=111.10, patternAlt=2549,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-
-    -- ── Persian Gulf ─────────────────────────────────────────
-    ["Abu Dhabi Intl"]      = { hdg=130, reciprocal=310, elevation=88,   ILSfreq=0,      patternAlt=1588,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Ain Intl"]         = { hdg=70,  reciprocal=250, elevation=869,  ILSfreq=0,      patternAlt=2369,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Bateen"]           = { hdg=130, reciprocal=310, elevation=16,   ILSfreq=0,      patternAlt=1516,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Dhafra AB"]        = { hdg=130, reciprocal=310, elevation=77,   ILSfreq=111.70, patternAlt=1577,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Maktoum Intl"]     = { hdg=120, reciprocal=300, elevation=114,  ILSfreq=0,      patternAlt=1614,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Minhad AB"]        = { hdg=80,  reciprocal=260, elevation=202,  ILSfreq=0,      patternAlt=1702,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Dubai Intl"]          = { hdg=120, reciprocal=300, elevation=62,   ILSfreq=110.90, patternAlt=1562,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Fujairah Intl"]       = { hdg=110, reciprocal=290, elevation=152,  ILSfreq=0,      patternAlt=1652,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Kish Intl"]           = { hdg=90,  reciprocal=270, elevation=101,  ILSfreq=0,      patternAlt=1601,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Bandar Abbas Intl"]   = { hdg=210, reciprocal=30,  elevation=22,   ILSfreq=109.90, patternAlt=1522,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Qeshm Island"]        = { hdg=90,  reciprocal=270, elevation=30,   ILSfreq=0,      patternAlt=1530,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Lavan Island"]        = { hdg=90,  reciprocal=270, elevation=76,   ILSfreq=0,      patternAlt=1576,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Lar"]                 = { hdg=210, reciprocal=30,  elevation=2641, ILSfreq=0,      patternAlt=4141,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Jiroft"]              = { hdg=270, reciprocal=90,  elevation=2795, ILSfreq=0,      patternAlt=4295,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Kerman"]              = { hdg=220, reciprocal=40,  elevation=5741, ILSfreq=0,      patternAlt=7241,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Shiraz Intl"]         = { hdg=290, reciprocal=110, elevation=4920, ILSfreq=0,      patternAlt=6420,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Sharjah Intl"]        = { hdg=120, reciprocal=300, elevation=111,  ILSfreq=0,      patternAlt=1611,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tunb Island AFB"]     = { hdg=90,  reciprocal=270, elevation=16,   ILSfreq=0,      patternAlt=1516,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Sirri Island"]        = { hdg=90,  reciprocal=270, elevation=43,   ILSfreq=0,      patternAlt=1543,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Abu Musa Island"]     = { hdg=90,  reciprocal=270, elevation=46,   ILSfreq=0,      patternAlt=1546,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-
-    -- ── Syria ────────────────────────────────────────────────
-    ["Incirlik"]            = { hdg=50,  reciprocal=230, elevation=240,  ILSfreq=109.30, patternAlt=1740,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Akrotiri"]            = { hdg=100, reciprocal=280, elevation=76,   ILSfreq=114.70, patternAlt=1576,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Hatay"]               = { hdg=50,  reciprocal=230, elevation=269,  ILSfreq=108.30, patternAlt=1769,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Adana Sakirpasa"]     = { hdg=50,  reciprocal=230, elevation=65,   ILSfreq=0,      patternAlt=1565,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Gaziantep"]           = { hdg=100, reciprocal=280, elevation=2313, ILSfreq=0,      patternAlt=3813,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Aleppo"]              = { hdg=90,  reciprocal=270, elevation=1276, ILSfreq=0,      patternAlt=2776,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Kuweires"]            = { hdg=90,  reciprocal=270, elevation=1158, ILSfreq=0,      patternAlt=2658,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Taftanaz"]            = { hdg=90,  reciprocal=270, elevation=968,  ILSfreq=0,      patternAlt=2468,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Al Qusayr"]           = { hdg=250, reciprocal=70,  elevation=1178, ILSfreq=0,      patternAlt=2678,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Khalkhalah"]          = { hdg=270, reciprocal=90,  elevation=2267, ILSfreq=0,      patternAlt=3767,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tiyas"]               = { hdg=90,  reciprocal=270, elevation=1355, ILSfreq=0,      patternAlt=2855,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Deir ez-Zor"]         = { hdg=270, reciprocal=90,  elevation=700,  ILSfreq=0,      patternAlt=2200,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Abu ad Duhur"]        = { hdg=90,  reciprocal=270, elevation=912,  ILSfreq=0,      patternAlt=2412,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Damascus"]            = { hdg=50,  reciprocal=230, elevation=2020, ILSfreq=108.30, patternAlt=3520,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Marj Ruhayyil"]       = { hdg=60,  reciprocal=240, elevation=2024, ILSfreq=0,      patternAlt=3524,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Mezzeh"]              = { hdg=50,  reciprocal=230, elevation=2362, ILSfreq=0,      patternAlt=3862,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Beirut-Rafic Hariri"] = { hdg=170, reciprocal=350, elevation=87,   ILSfreq=110.50, patternAlt=1587,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Ramat David"]         = { hdg=90,  reciprocal=270, elevation=185,  ILSfreq=108.70, patternAlt=1685,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Haifa"]               = { hdg=340, reciprocal=160, elevation=22,   ILSfreq=0,      patternAlt=1522,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tel Nof"]             = { hdg=20,  reciprocal=200, elevation=193,  ILSfreq=0,      patternAlt=1693,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Paphos"]              = { hdg=110, reciprocal=290, elevation=41,   ILSfreq=0,      patternAlt=1541,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-
-    -- ── Nevada (NTTR) ─────────────────────────────────────────
-    ["Nellis AFB"]          = { hdg=210, reciprocal=30,  elevation=1870, ILSfreq=109.10, patternAlt=3370,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Creech AFB"]          = { hdg=160, reciprocal=340, elevation=3131, ILSfreq=0,      patternAlt=4631,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["McCarran Intl"]       = { hdg=190, reciprocal=10,  elevation=2181, ILSfreq=111.70, patternAlt=3681,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Henderson Executive"] = { hdg=170, reciprocal=350, elevation=2492, ILSfreq=0,      patternAlt=3992,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Boulder City"]        = { hdg=150, reciprocal=330, elevation=2201, ILSfreq=0,      patternAlt=3701,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Jean"]                = { hdg=20,  reciprocal=200, elevation=2820, ILSfreq=0,      patternAlt=4320,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Beatty"]              = { hdg=140, reciprocal=320, elevation=3170, ILSfreq=0,      patternAlt=4670,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tonopah Test Range"]  = { hdg=140, reciprocal=320, elevation=5549, ILSfreq=0,      patternAlt=7049,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Groom Lake AFB"]      = { hdg=140, reciprocal=320, elevation=4806, ILSfreq=0,      patternAlt=6306,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Lincoln County"]      = { hdg=150, reciprocal=330, elevation=4825, ILSfreq=0,      patternAlt=6325,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-
-    -- ── Marianas ─────────────────────────────────────────────
-    ["Andersen AFB"]        = { hdg=60,  reciprocal=240, elevation=627,  ILSfreq=111.10, patternAlt=2127,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Antonio B. Won Pat"]  = { hdg=60,  reciprocal=240, elevation=298,  ILSfreq=110.30, patternAlt=1798,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Rota Intl"]           = { hdg=90,  reciprocal=270, elevation=607,  ILSfreq=0,      patternAlt=2107,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Saipan Intl"]         = { hdg=70,  reciprocal=250, elevation=215,  ILSfreq=0,      patternAlt=1715,
-        frequencies = {
-            ground = { mhz=121.800, hz=121800000 },
-            tower = { mhz=118.700, hz=118700000 },
-            approach = { mhz=123.500, hz=123500000 },
-            departure = { mhz=124.200, hz=124200000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-    ["Tinian"]              = { hdg=60,  reciprocal=240, elevation=271,  ILSfreq=0,      patternAlt=1771,
-        frequencies = {
-            ground = { mhz=121.900, hz=121900000 },
-            tower = { mhz=118.800, hz=118800000 },
-            approach = { mhz=123.600, hz=123600000 },
-            departure = { mhz=124.300, hz=124300000 }
-        },
-        controllers = { ground=true, tower=true, approach=true, departure=true }
-    },
-}
-
+-- All airfield info is now in Scripts/airfields.lua
+local airfields = require("Mods/Services/DCS-ATC/Scripts/airfields.lua")
+ATC.runways = airfields.runways
+ATC.getWind = airfields.getWind
+ATC.isRunwayClear = airfields.isRunwayClear
+ATC.getRunway = airfields.getRunway
+ATC.getRunwayFrequencies = airfields.getRunwayFrequencies
+ATC.getRunwayControllers = airfields.getRunwayControllers
+ATC.getFieldState = airfields.getFieldState
+ATC.state = airfields.state
+-- CRPs and other airfield utilities are now in airfields.lua
 
 -- ============================================================
 -- 2.  STATE
@@ -1154,6 +438,8 @@ end
 
 --- Send a text message to one group only.
 
+
+
 -- Calculate the total OGG duration for a message (in seconds)
 local function getVoiceDuration(text, abName, controller)
     -- Try to match the voice used for this controller/airbase
@@ -1180,10 +466,6 @@ function ATC.msg(groupId, text, long, abName, controller)
     trigger.action.outTextForGroup(groupId, text, dur, false)
 end
 
---- Send a text message to ALL players.
-function ATC.msgAll(text)
-    trigger.action.outText(text, ATC.config.msgDuration, false)
-end
 
 --- Straight-line distance (metres) between two Vec3 points.
 function ATC.distVec3(a, b)
@@ -1317,22 +599,6 @@ function ATC.getGSDeviationFt(unit, ab, gsAngle)
     return deviationM * 3.28084             -- metres → feet
 end
 
---- Derive traffic-pattern leg headings from a runway config entry.
---- patternDir "L" = left traffic (standard), "R" = right traffic.
---- Returns { dir, finalHdg, downwindHdg, baseHdg } or nil if insufficient data.
-function ATC.getPatternLegs(rwy)
-    if not rwy or not rwy.hdg then return nil end
-    local dir         = rwy.patternDir or "L"
-    -- rwy.hdg and rwy.reciprocal are MAGNETIC; convert to TRUE for all geometry/comparisons.
-    local finalHdg    = ATC.toTrue(rwy.hdg) % 360
-    local downwindHdg = ATC.toTrue(rwy.reciprocal or ((rwy.hdg + 180) % 360)) % 360
-    -- Left traffic: turn left off downwind → base is 90° clockwise from final
-    -- Right traffic: turn right off downwind → base is 90° counter-clockwise from final
-    local baseHdg = (dir == "R")
-        and ((finalHdg - 90 + 360) % 360)
-        or  ((finalHdg + 90) % 360)
-    return { dir=dir, finalHdg=finalHdg, downwindHdg=downwindHdg, baseHdg=baseHdg }
-end
 
 --- Return approach speed profile for a unit (falls back to "default").
 function ATC.getApproachSpeeds(unit)
@@ -2250,9 +1516,6 @@ end
 -- ── Part 3: Radar vectoring helpers ──────────────────────────────────────────
 
 --- Look up runway data for an airbase. Returns nil if not in ATC.runways.
-function ATC.getRunway(airbaseName)
-    return ATC.runways[airbaseName]
-end
 
 --- Round a heading to the nearest 10 degrees (standard ATC readout).
 function ATC.roundHdg(h)
@@ -2368,12 +1631,12 @@ function ATC.getInterceptHeading(uPos, abPos, rwy)
     local recipTrueHdg   = ATC.toTrue(rwy.reciprocal)   -- direction from field to FAP
     local inboundHdgRad  = math.rad(recipTrueHdg)
     local nm8m = 8 * 1852
-    local clPt = {
+    local entryPos  = {
         x = abPos.x + nm8m * math.cos(inboundHdgRad),
         y = abPos.y,
         z = abPos.z + nm8m * math.sin(inboundHdgRad),
     }
-    local rawHdg = ATC.getBearing(uPos, clPt)
+    local rawHdg = ATC.getBearing(uPos, entryPos)
     -- Cap cut angle to ±30° either side of the APPROACH heading (rwy.hdg TRUE)
     local diff = angleDiff(inboundTrueHdg, rawHdg)
     if diff >  30 then rawHdg = (inboundTrueHdg + 30) % 360 end
@@ -2506,6 +1769,7 @@ end
 --- Returns gate number (1-based index).
 --- Gate distance represents: "complete this step before reaching this distance"
 function ATC.determineCurrentGate(unit, rwy, gates, distNM, altFt)
+   
     if not unit or not rwy or not gates or not distNM or not altFt then return 1 end
 
     -- Find the first gate we're still working on (haven't reached yet)
@@ -2794,7 +2058,7 @@ function ATC.clearEngagement(unitName)
         ATC.freeStackLevel(unitName, field)
         if rec.stackAlt       then rec.stackAlt[field]       = nil end
         if rec.approachGate   then rec.approachGate[field]   = nil end
-        if rec.landingCleared then rec.landingCleared[field] = nil end
+        if rec.landingCleared then rec.landingCleared[field]  = nil end
         if rec.patternAdv     then rec.patternAdv[field]     = nil end
         if rec.holdPhase      then rec.holdPhase[field]      = nil end
     end
@@ -2892,32 +2156,17 @@ end
 -- ── F1 (ground) – Request Taxi ───────────────────────────────
 function ATC.onTaxiRequest(arg)
     local unitName    = arg.unitName
-    local airbaseName = arg.airbaseName
-    local rec  = ATC.state.aircraft[unitName]
-    if not rec then return end
     local unit = Unit.getByName(unitName)
-    if not ATC.isPlayer(unit) then return end
+    if not unit or not ATC.isPlayer(unit) then return end
+    if not ATC.isGroupLead(unit) then return end
+    local rec  = ATC.state.aircraft[unitName]
     local cs = unit:getCallsign() or unitName
-
-
-    -- Daytime greeting for first contact with Ground at this airbase
-    rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
-    local greeting = ""
-    if not rec.greeted[airbaseName]["Ground"] then
-        greeting = getDaytimeGreeting() .. ", " .. cs .. ". " .. airbaseName .. " Ground.\n"
-        rec.greeted[airbaseName]["Ground"] = true
-    end
-    ATC.msg(rec.groupId, string.format(
-        "%s%s\n"                                     ..
-        "Taxi to holding point, runway in use.\n"  ..
-        "Wind calm.  QNH check.\n"                 ..
-        "Monitor this frequency.",
-        greeting,
-        preamble(unitName, airbaseName, "Ground")))
-
-    ATC.setPhase(unitName, airbaseName, "taxi")
-    ATC.setEngagedField(unitName, airbaseName)
-    ATC.msgAll(string.format("[Traffic]  %s is taxiing at %s.", cs, airbaseName))
+    local groupId = rec and rec.groupId or (unit:getGroup() and unit:getGroup():getID())
+    if not groupId then return end
+    -- Enqueue the request
+    if not ATC.enqueueRadio('ground', groupId, cs) then return end
+    -- If controller is free, serve now
+    ATC.tryServeRadio('ground')
 end
 
 -- ── F2 (ground) – Request Takeoff ────────────────────────────
@@ -3301,7 +2550,7 @@ function ATC.checkAndClearNext(airbaseName)
                         ATC.radioMsg(wRec.groupId, abPos, string.format(
                             "%sDescend to %d ft.  Maintain %d kt.",
                             controllerCall(wName, airbaseName, "Approach"),
-                            newAlt, HOLD_SPEED), true, airbaseName, "Approach")
+                            newAlt, HOLD_SPEED), true, abName, "Approach")
                     end
                 end
             end
@@ -3437,25 +2686,26 @@ function ATC.checkGlideslopes()
                         local spdKt  = ATC.getSpeedKt(unit)
                         local altFt  = ATC.getAltFt(unit)
                         local spds   = ATC.getApproachSpeeds(unit)
-                        local lastT  = rec.lastGuidance[abName] or 0
-                        local rwy = ATC.getRunway(abName)
-                        local leg = (rwy and ATC.getPatternLeg(unit:getPoint(), abPos, rwy)) or nil
-                        local finalLeg = (leg == "final" or leg == "short_final")
-                        local onFinal = finalLeg and distNM <= 8
-                        local shortFinal = finalLeg and distNM <= 5
+                            local lastT  = rec.lastGuidance[abName] or 0
+                            local rwy = ATC.getRunway(abName)
+                            local leg = (rwy and ATC.getPatternLeg(unit:getPoint(), abPos, rwy)) or nil
+                            local finalLeg = (leg == "final" or leg == "short_final")
+                            local patternEntryLeg = (leg == "initial" or leg == "downwind")
+                            local onFinal = finalLeg and distNM <= 8
+                            local onPatternEntry = patternEntryLeg and distNM <= 10 -- 10 NM default for pattern entry
 
-                        -- Determine controller based on distance
-                        local controller = onFinal and "Tower" or "Approach"
+                            -- Determine controller based on position
+                            local controller = (onFinal or onPatternEntry) and "Tower" or "Approach"
 
-                        -- ── Handoff from Approach to Tower at 5 NM ──
-                        if onFinal and not rec.handedOffToTower[abName] then
-                            ATC.radioMsg(rec.groupId, abPos, string.format(
-                                "%scontact %s Tower on this frequency.\n" ..
-                                "%.1f NM from threshold.",
-                                controllerCall(unitName, abName, "Approach"), abName, distNM),
-                                false, abName, "Approach")
-                            rec.handedOffToTower[abName] = true
-                        end
+                            -- ── Handoff from Approach to Tower at pattern entry (initial/downwind) or on final ──
+                            if (onPatternEntry or onFinal) and not rec.handedOffToTower[abName] then
+                                ATC.radioMsg(rec.groupId, abPos, string.format(
+                                    "%scontact %s Tower on this frequency.\n" ..
+                                    "%.1f NM from threshold.",
+                                    controllerCall(unitName, abName, "Approach"), abName, distNM),
+                                    false, abName, "Approach")
+                                rec.handedOffToTower[abName] = true
+                            end
 
                         if spdKt and spdKt < ATC.config.stallWarnKt and unit:inAir() then
                             ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -3470,8 +2720,45 @@ function ATC.checkGlideslopes()
                         elseif (now - lastT) >= ATC.config.guidanceInterval then
                             local cleared = rec.landingCleared and rec.landingCleared[abName]
 
-                            -- ── 2. Gear + approach-speed reminder (once, cleared aircraft ≤8 NM) ──
-                            if cleared and onFinal and distNM <= 5 and not rec.gearReminded[abName] then
+                            -- Glideslope deviation checks (realistic logic)
+                            if cleared and onFinal then
+                                -- Calculate deviation as percent of expected values
+                                local gs = ATC.getGlideslope(unit, abPos, rwy)
+                                local speedDev = math.abs(gs.speedDev or 0)
+                                local aoaDev = math.abs(gs.aoaDev or 0)
+                                local altDev = math.abs(gs.altDev or 0)
+                                local maxDev = math.max(speedDev, aoaDev, altDev)
+                                if maxDev > 0.5 then
+                                    ATC.radioMsg(rec.groupId, abPos, "Missed approach, go around!", false, abName, controller)
+                                    ATC.setPhase(unitName, abName, "goaround")
+                                    rec.lastGuidance[abName] = now
+                                elseif maxDev > 0.25 then
+                                    ATC.radioMsg(rec.groupId, abPos, "Correct your approach: deviation from glideslope.", false, abName, controller)
+                                    rec.lastGuidance[abName] = now
+                                end
+                            end
+
+
+                            -- 2. Final landing clearance (Tower, only if runway clear)
+                            if cleared and onFinal and distNM <= 2 and not rec.finalCleared[abName] then
+                                if ATC.isRunwayClear(abName) then
+                                    local windDir, windSpd = ATC.getWind(abPos)
+                                    ATC.radioMsg(rec.groupId, abPos, string.format(
+                                        "%s, %s tower, cleared to land, wind %03d at %d, check gear down.",
+                                        cs, abName, windDir, windSpd),
+                                        false, abName, controller)
+                                    rec.finalCleared = rec.finalCleared or {}
+                                    rec.finalCleared[abName] = true
+                                    rec.lastGuidance[abName] = now
+                                else
+                                    ATC.radioMsg(rec.groupId, abPos, string.format(
+                                        "%s, %s tower, runway occupied, return to pattern and await clearance.",
+                                        cs, abName),
+                                        false, abName, controller)
+                                    rec.lastGuidance[abName] = now
+                                end
+                            -- Gear reminder if not yet given and within 5 NM
+                            elseif cleared and onFinal and distNM <= 5 and not rec.gearReminded[abName] then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sslow to approach speed, %d kt.\n"   ..
                                     "Check gear down and locked.  %.1f NM.",
@@ -3481,7 +2768,7 @@ function ATC.checkGlideslopes()
                                 rec.gearReminded[abName] = true
                                 rec.lastGuidance[abName] = now
 
-                            -- ── 3. Speed too high on short final (cleared aircraft) ───────────────
+                            -- 3. Speed too high on short final (cleared aircraft)
                             elseif cleared and finalLeg and distNM <= 4 and spdKt and spdKt > spds.maxFinal then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sreduce speed to %d kt.\n"              ..
@@ -3548,8 +2835,8 @@ function ATC.checkGlideslopes()
                             end
                         end
                     end
-                end
-            end
+                end -- if ab and rwy
+            end -- if not abName / else
         end
     end
 end
@@ -3730,18 +3017,12 @@ function ATC.vectorToFinal(unitName, airbaseName)
     -- Compute the racetrack entry point: farNM outbound on runway centreline.
     -- x = north component, z = east component (DCS convention).
     local outHdgRad = math.rad(outboundHdg)
-    local farM      = farNM * 1852
+    local nm8m      = farNM * 1852
     local entryPos  = {
-        x = abPos.x + farM * math.cos(outHdgRad),
-        z = abPos.z + farM * math.sin(outHdgRad),
+        x = abPos.x + nm8m * math.cos(outHdgRad),
         y = abPos.y,
+        z = abPos.z + nm8m * math.sin(outHdgRad),
     }
-
-    -- Bearing from current position toward entry point
-    local dx        = entryPos.x - uPos.x
-    local dz        = entryPos.z - uPos.z
-    local toEntryHdg = math.deg(math.atan2(dz, dx))
-    if toEntryHdg < 0 then toEntryHdg = toEntryHdg + 360 end
 
     -- Phase: if already inside the racetrack gate, go outbound first;
     -- otherwise fly toward entry point (roughly inbound direction).
@@ -3771,7 +3052,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
         holdGate.noSpeed = true  -- no speed instruction while routing to CRP
         ATC.log(string.format(
             "VTF   %-10s @%-20s  → CRP %-12s  toCRPHdg=%3.0f  stackAlt=%d",
-            unitName, airbaseName, crp.name, toCRPHdg, assignedAlt))
+            unitName, abName, crp.name, toCRPHdg, assignedAlt))
         ATC.issueVectorInstruction(unitName, rec, unit, abPos, holdGate,
             toCRPHdg, timer.getTime(), airbaseName)
         return
@@ -3779,7 +3060,7 @@ function ATC.vectorToFinal(unitName, airbaseName)
 
     ATC.log(string.format(
         "VTF   %-10s @%-20s  initDist=%5.1fNM  stackAlt=%d  toEntryHdg=%3.0f  outHdg=%3.0f  holdPhase=%s",
-        unitName, airbaseName, initDist, assignedAlt,
+        unitName, abName, initDist, assignedAlt,
         toEntryHdg, outboundHdg, rec.holdPhase[airbaseName]))
 
     ATC.issueVectorInstruction(unitName, rec, unit, abPos, holdGate,
@@ -3816,7 +3097,7 @@ function ATC.checkVectoring()
                         local altFt    = ATC.getAltFt(unit)
                         local stackAlt = rec.stackAlt and rec.stackAlt[abName]
                         if not stackAlt then
-                            stackAlt = ATC.assignStackLevel(unitName, abName, altFt)
+                            stackAlt = ATC.assignStackLevel(unitName, airbaseName, altFt)
                             rec.stackAlt[abName] = stackAlt
                         end
 
