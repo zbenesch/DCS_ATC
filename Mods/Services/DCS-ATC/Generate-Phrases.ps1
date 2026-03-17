@@ -81,6 +81,10 @@ $PhraseFrequency = [ordered]@{
     "abeam-the-threshold" = "approach"
     "on-base-runway" = "approach"
     "maintain" = "approach"
+    "initial" = "approach"
+    "straight-in" = "approach"
+    "on-downwind" = "approach"
+    "crosswind" = "approach"
     # Tower
     "tower" = "tower"
     "request-takeoff" = "tower"
@@ -169,6 +173,10 @@ $Phrases = [ordered]@{
     "turn-final-heading"   = "turn final heading"
     "established-on-final" = "established on final"
     "continue-approach"    = "continue approach"
+    "initial"              = "initial"
+    "straight-in"          = "straight in"
+    "on-downwind"          = "on downwind"
+    "crosswind"            = "crosswind"
 
     # -- Approach clearance ---------------------------------------------------
     "cleared-for-the-approach"   = "cleared for the approach"

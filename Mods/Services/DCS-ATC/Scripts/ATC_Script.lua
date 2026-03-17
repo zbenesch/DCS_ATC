@@ -169,28 +169,28 @@ ATC.config = {
     -- clean / gear / maxFinal kept for legacy checks; "final" is the authoritative Vref.
     approachSpeeds = {
         -- ── US fixed-wing ─────────────────────────────────────────────────────
-        ["F-16C_50"]            = { clean=250, gear=200, final=160, maxFinal=200 },
+        ["F-16C_50"]            = { clean=250, gear=210, final=160, maxFinal=200 },
         ["FA-18C_hornet"]       = { clean=250, gear=200, final=140, maxFinal=180 },
-        ["F-15C"]               = { clean=250, gear=200, final=155, maxFinal=200 },
-        ["F-15E"]               = { clean=250, gear=200, final=155, maxFinal=200 },
-        ["F-14A-135-GR"]        = { clean=250, gear=200, final=134, maxFinal=180 },
-        ["F-14B"]               = { clean=250, gear=200, final=134, maxFinal=180 },
+        ["F-15C"]               = { clean=250, gear=220, final=155, maxFinal=200 },
+        ["F-15E"]               = { clean=250, gear=220, final=155, maxFinal=200 },
+        ["F-14A-135-GR"]        = { clean=250, gear=210, final=134, maxFinal=180 },
+        ["F-14B"]               = { clean=250, gear=210, final=134, maxFinal=180 },
         ["A-10C"]               = { clean=200, gear=160, final=130, maxFinal=160 },
         ["A-10C_2"]             = { clean=200, gear=160, final=130, maxFinal=160 },
-        ["AV8BNA"]              = { clean=250, gear=200, final= 90, maxFinal=150 },
+        ["AV8BNA"]              = { clean=250, gear=200, final=110, maxFinal=150 },
         -- ── Russian / Soviet fixed-wing ───────────────────────────────────────
-        ["Su-27"]               = { clean=250, gear=180, final=145, maxFinal=190 },
-        ["Su-33"]               = { clean=250, gear=180, final=145, maxFinal=190 },
+        ["Su-27"]               = { clean=250, gear=210, final=145, maxFinal=190 },
+        ["Su-33"]               = { clean=250, gear=210, final=145, maxFinal=190 },
         ["Su-25T"]              = { clean=200, gear=160, final=135, maxFinal=170 },
         ["Su-25"]               = { clean=200, gear=160, final=135, maxFinal=170 },
-        ["MiG-29A"]             = { clean=250, gear=180, final=145, maxFinal=190 },
-        ["MiG-29S"]             = { clean=250, gear=180, final=145, maxFinal=190 },
-        ["MiG-21Bis"]           = { clean=250, gear=200, final=170, maxFinal=215 },
+        ["MiG-29A"]             = { clean=250, gear=210, final=145, maxFinal=190 },
+        ["MiG-29S"]             = { clean=250, gear=210, final=145, maxFinal=190 },
+        ["MiG-21Bis"]           = { clean=250, gear=220, final=170, maxFinal=215 },
         -- ── European fixed-wing ───────────────────────────────────────────────
-        ["AJS37"]               = { clean=250, gear=180, final=140, maxFinal=185 },
-        ["M-2000C"]             = { clean=250, gear=200, final=155, maxFinal=195 },
+        ["AJS37"]               = { clean=250, gear=200, final=140, maxFinal=185 },
+        ["M-2000C"]             = { clean=250, gear=210, final=155, maxFinal=195 },
         -- ── Multi-national ────────────────────────────────────────────────────
-        ["JF-17"]               = { clean=250, gear=200, final=145, maxFinal=185 },
+        ["JF-17"]               = { clean=250, gear=210, final=145, maxFinal=185 },
         -- ── Trainers / light jets ─────────────────────────────────────────────
         ["C-101CC"]             = { clean=200, gear=160, final=120, maxFinal=155 },
         ["L-39ZA"]              = { clean=200, gear=160, final=115, maxFinal=150 },
@@ -1120,24 +1120,24 @@ function ATC.getOrCreateRecord(unitName, groupId)
             landingCleared = {}, -- [airbaseName] = true once "cleared for approach/landing" issued
             holdPhase      = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             greeted        = {}, -- [airbaseName][controller] = true if greeted
-        -- Helper: Get daytime greeting string based on in-game time
-        local function getDaytimeGreeting()
-            -- DCS time is seconds since mission start; get hour from env.mission or timer.getAbsTime if available
-            local hour = 12
-            if env and env.mission and env.mission.date and env.mission.start_time then
-                -- Use mission start time if available
-                local t = env.mission.start_time
-                hour = math.floor((t / 3600) % 24)
-            elseif timer and timer.getAbsTime then
-                hour = math.floor((timer.getAbsTime() / 3600) % 24)
-            end
-            if hour < 12 then return "Good morning"
-            elseif hour < 18 then return "Good afternoon"
-            else return "Good evening" end
-        end
         }
     end
     return ATC.state.aircraft[unitName]
+end
+
+-- Helper: Get daytime greeting string based on in-game time
+local function getDaytimeGreeting()
+    -- DCS time is seconds since mission start; get hour from env.mission or timer.getAbsTime if available
+    local hour = 12
+    if env and env.mission and env.mission.date and env.mission.start_time then
+        local t = env.mission.start_time
+        hour = math.floor((t / 3600) % 24)
+    elseif timer and timer.getAbsTime then
+        hour = math.floor((timer.getAbsTime() / 3600) % 24)
+    end
+    if hour < 12 then return "Good morning"
+    elseif hour < 18 then return "Good afternoon"
+    else return "Good evening" end
 end
 
 --- Get the current phase of a player at a given airbase.
@@ -1212,6 +1212,11 @@ function ATC.ordinal(n)
     elseif n == 2 then return "2nd"
     elseif n == 3 then return "3rd"
     else return n .. "th" end
+end
+
+--- ATC sequence string: 1->"1", 2->"2", etc.
+function ATC.sequenceNumber(n)
+    return tostring(n)
 end
 
 --- Get Vec3 position of an Airbase object.
@@ -1366,6 +1371,9 @@ end
 -- File: <DCS saved games>/Logs/DCS-atc.log
 local _ATC_LOG_PATH = nil
 function ATC.log(msg)
+    if not io or not io.open then
+        return
+    end
     if not _ATC_LOG_PATH then
         local dir = (lfs and lfs.writedir and lfs.writedir()) or ""
         _ATC_LOG_PATH = dir .. "Logs\\DCS-atc.log"
@@ -2011,6 +2019,10 @@ local _PSUBS = {
     {"slow to approach speed",            "__slow_to_approach_speed__"},
     {"cleared for the approach",          "__cleared_for_the_approach__"},
     {"established on final",              "__established_on_final__"},
+    {"straight in",                       "__straight_in__"},
+    {"on downwind",                       "__on_downwind__"},
+    {"crosswind",                         "__crosswind__"},
+    {"initial",                           "__initial__"},
     {"abeam the threshold",               "__abeam_the_threshold__"},
     {"expect vectors to runway",          "__expect_vectors_to_runway__"},
     {"on this frequency",                 "__on_this_frequency__"},
@@ -2047,6 +2059,7 @@ for _, w in ipairs({
     -- Common connectors
     "runway","left","right","traffic","contact",
     "number","speed","out","at","follow","and","for","hold","expect",
+    "initial","straight","in","downwind","crosswind",
     -- NATO alphabet
     "alpha","bravo","charlie","delta","echo","foxtrot","golf","hotel","india",
     "juliet","kilo","lima","mike","november","oscar","papa","quebec","romeo",
@@ -2206,6 +2219,33 @@ function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
     end
 end
 
+--- Send a radio message with separate screen and spoken text.
+function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller)
+    local spoken = voiceText or text
+    local dur = nil
+    if abName and controller then
+        dur = getVoiceDuration(spoken, abName, controller)
+    end
+    if dur then
+        trigger.action.outTextForGroup(groupId, text, dur, false)
+    else
+        ATC.msg(groupId, text, long, abName, controller)
+    end
+
+    if abPos and abName then
+        local rwy      = ATC.runways[abName]
+        controller     = controller or "Approach"
+        local freqs    = rwy and rwy.frequencies
+        local ctrlKey  = controller:lower()
+        local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
+                         or (freqs and freqs.approach and freqs.approach.hz)
+                         or 251000000
+        local voice    = ATC.getStationVoice(abName, controller)
+        local tokens   = ATC.textToTokens(spoken)
+        ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice)
+    end
+end
+
 
 -- ── Part 3: Radar vectoring helpers ──────────────────────────────────────────
 
@@ -2252,10 +2292,64 @@ function ATC.getPatternLeg(uPos, abPos, rwy)
         if math.abs(diff) <= 30 then return "final" end
         if math.abs(diff) <= 90 then return "base" end
     end
+    -- Outside the close pattern area, do not try to label aircraft as being in
+    -- a traffic-pattern leg. Long-range straight-in arrivals can otherwise be
+    -- misidentified as downwind purely from bearing geometry.
+    if distNM > 15 then return "outbound" end
     -- Downwind: roughly parallel to runway, reciprocal heading sector
     if math.abs(math.abs(diff) - 180) <= 45 then return "downwind" end
     if math.abs(diff) > 90 then return "crosswind" end
     return "outbound"
+end
+
+--- Derive a military-style arrival report from aircraft geometry.
+-- Text can be more specific than the currently generated voice pack.
+function ATC.getArrivalReport(unit, airbaseName, ab)
+    local report = {
+        text = "inbound for landing",
+        voice = "inbound for landing",
+        traffic = "inbound for landing",
+    }
+
+    local rwy = ATC.getRunway(airbaseName)
+    if not unit or not ab or not rwy then
+        return report
+    end
+
+    local uPos = unit:getPoint()
+    local abPos = ATC.getAirbasePos(ab)
+    if not uPos or not abPos then
+        return report
+    end
+
+    local distNM = ATC.mToNM(ATC.distVec3H(uPos, abPos))
+    local leg = ATC.getPatternLeg(uPos, abPos, rwy)
+
+    if leg == "short_final" or leg == "final" then
+        report.text = "established on final"
+        report.voice = "established on final"
+        report.traffic = "established on final"
+    elseif leg == "base" then
+        report.text = "on base"
+        report.voice = "on base, runway"
+        report.traffic = "on base"
+    elseif leg == "downwind" then
+        report.text = "on downwind"
+        report.traffic = "on downwind"
+    elseif leg == "crosswind" then
+        report.text = "crosswind"
+        report.traffic = "crosswind"
+    elseif leg == "outbound" then
+        if distNM and distNM <= 10 then
+            report.text = "initial"
+            report.traffic = "initial"
+        else
+            report.text = "straight in"
+            report.traffic = "straight in"
+        end
+    end
+
+    return report
 end
 
 --- Compute the intercept heading to roll out on the localizer from a given
@@ -2867,7 +2961,7 @@ function ATC.onTakeoffRequest(arg)
         ATC.msg(rec.groupId, string.format(
             "%s\n"                                  ..
             "Hold short.  Number %s for departure.",
-            preamble(unitName, airbaseName, "Tower"), ATC.ordinal(qpos)))
+            preamble(unitName, airbaseName, "Tower"), ATC.sequenceNumber(qpos)))
         ATC.setEngagedField(unitName, airbaseName)
     end
 end
@@ -2939,7 +3033,7 @@ function ATC.onInboundRequest(arg)
             "Expect approach clearance when number 1.",
             greeting,
             preamble(unitName, airbaseName, "Approach"),
-            distStr, altStr, ATC.ordinal(seqN), aheadCs)
+            distStr, altStr, ATC.sequenceNumber(seqN), aheadCs)
         ATC.setPhase(unitName, airbaseName, "inbound")
     end
 
@@ -2947,18 +3041,24 @@ function ATC.onInboundRequest(arg)
     ATC.setEngagedField(unitName, airbaseName)
 
     local abPos = ATC.getAirbasePos(ab)
+    local arrivalReport = ATC.getArrivalReport(unit, airbaseName, ab)
 
-    -- t = 0 : Pilot's check-in  (text only – this is the player speaking)
-    ATC.msg(rec.groupId, string.format(
-        "%s Approach,  %s,  inbound for landing.\n%s at %s.",
-        airbaseName, cs, distStr, altStr))
+    -- t = 0 : Initial airfield traffic call — voice + text
+    local initialCallText = string.format(
+        "%s traffic, %s %s.\n%s at %s.",
+        airbaseName, cs, arrivalReport.text, distStr, altStr)
+    local initialCallVoice = string.format(
+        "%s traffic, %s %s.\n%s at %s.",
+        airbaseName, cs, arrivalReport.voice, distStr, altStr)
+    ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach")
 
     -- t = 0 : Traffic board (text to all players)
-    ATC.msgAll(string.format("[Traffic]  %s inbound to %s, number %s.",
-        cs, airbaseName, ATC.ordinal(seqN)))
+    ATC.msgAll(string.format("[Traffic]  %s Traffic, %s %s.",
+        airbaseName, cs, arrivalReport.traffic))
 
-    -- t = 5 : Approach controller reply — voice + text
-    local t1      = timer.getTime() + 5
+    -- t = intro clip + 0.75s : Approach controller reply — voice + text
+    local introDur = ATC.ttsDuration(initialCallVoice)
+    local t1      = timer.getTime() + introDur + 0.75
     local respDur = ATC.ttsDuration(response)
 
     timer.scheduleFunction(function(p)
@@ -3014,7 +3114,7 @@ function ATC.onPositionReport(arg)
     local distStr = distNM and string.format("%.1f NM", distNM) or "unknown"
     local altStr  = altFt  and string.format("%d ft",   altFt)  or "unknown"
     local spdStr  = spdKt  and string.format("%d kt",   spdKt)  or "unknown"
-    local seqStr  = seqN > 0 and ("  Number " .. ATC.ordinal(seqN) .. ".") or ""
+    local seqStr  = seqN > 0 and ("  Number " .. ATC.sequenceNumber(seqN) .. ".") or ""
 
     ATC.msg(rec.groupId, string.format(
         "%s\n"                           ..
@@ -3060,7 +3160,7 @@ function ATC.onGoAround(arg)
         "%s\n"                                                  ..
         "Go-around approved.  Climb runway heading, 3000 ft.\n" ..
         "Re-sequenced number %s.  Contact tower when ready.",
-        preamble(unitName, airbaseName, "Tower"), ATC.ordinal(newSeqN)))
+        preamble(unitName, airbaseName, "Tower"), ATC.sequenceNumber(newSeqN)))
 
     ATC.setPhase(unitName, airbaseName, "goaround")
     -- Reset gear reminder and GS deviation state for the new circuit
@@ -3338,7 +3438,11 @@ function ATC.checkGlideslopes()
                         local altFt  = ATC.getAltFt(unit)
                         local spds   = ATC.getApproachSpeeds(unit)
                         local lastT  = rec.lastGuidance[abName] or 0
-                        local onFinal = distNM <= 8  -- BMS final approach point: 8 NM
+                        local rwy = ATC.getRunway(abName)
+                        local leg = (rwy and ATC.getPatternLeg(unit:getPoint(), abPos, rwy)) or nil
+                        local finalLeg = (leg == "final" or leg == "short_final")
+                        local onFinal = finalLeg and distNM <= 8
+                        local shortFinal = finalLeg and distNM <= 5
 
                         -- Determine controller based on distance
                         local controller = onFinal and "Tower" or "Approach"
@@ -3367,7 +3471,7 @@ function ATC.checkGlideslopes()
                             local cleared = rec.landingCleared and rec.landingCleared[abName]
 
                             -- ── 2. Gear + approach-speed reminder (once, cleared aircraft ≤8 NM) ──
-                            if cleared and distNM <= 8 and not rec.gearReminded[abName] then
+                            if cleared and onFinal and distNM <= 5 and not rec.gearReminded[abName] then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sslow to approach speed, %d kt.\n"   ..
                                     "Check gear down and locked.  %.1f NM.",
@@ -3378,7 +3482,7 @@ function ATC.checkGlideslopes()
                                 rec.lastGuidance[abName] = now
 
                             -- ── 3. Speed too high on short final (cleared aircraft) ───────────────
-                            elseif cleared and onFinal and spdKt and spdKt > spds.maxFinal then
+                            elseif cleared and finalLeg and distNM <= 4 and spdKt and spdKt > spds.maxFinal then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sreduce speed to %d kt.\n"              ..
                                     "You are at %d kt  (%.1f NM, %s ft).",
@@ -3725,7 +3829,7 @@ function ATC.checkVectoring()
                         local spds    = ATC.getApproachSpeeds(unit)
                         local finalGate = {
                             altFt   = (rwy.elevation or 0) + FINAL_AGL,
-                            speedKt = spds.final,
+                            speedKt = math.max(spds.gear or spds.final, spds.final),
                         }
 
                         local legs        = ATC.getPatternLegs(rwy)
@@ -3784,15 +3888,19 @@ function ATC.checkVectoring()
                             end
 
                         elseif holdPhase == nil then
-                            -- On final approach (hold complete, cleared for landing).
-                            -- Guard: ph must be "approach" — if still "inbound", vectorToFinal
-                            -- hasn't fired yet and holdPhase will be set shortly; skip to avoid
-                            -- issuing premature finalGate vectors before the hold is set up.
+                            -- Legacy fallback only. Pattern entry now uses an explicit
+                            -- "pattern" state so we do not resume recomputing intercept
+                            -- headings after already issuing a pattern turn.
                             if ph == "approach" and distNM >= nearNM and (now - lastT) > interval then
                                 local targetHdg = ATC.getInterceptHeading(uPos, abPos, rwy)
                                 ATC.issueVectorInstruction(unitName, rec, unit, abPos,
                                     finalGate, targetHdg, now, abName)
                             end
+
+                        elseif holdPhase == "pattern" then
+                            -- Aircraft has been handed off into the visual pattern.
+                            -- Do not keep issuing fresh intercept vectors here; let the
+                            -- pattern advisory / glidepath logic take over.
 
                         elseif holdPhase == "inbound" then
                             -- Flying runway heading straight toward field.
@@ -3801,7 +3909,7 @@ function ATC.checkVectoring()
                                 if cleared then
                                     -- Cleared at inbound gate: break to downwind, hand off to pattern
                                     ATC.log(string.format("TRANS %-10s @%s  inbound→PATTERN  dist=%.1fNM (cleared)", unitName, abName, distNM))
-                                    rec.holdPhase[abName] = nil  -- checkGlideslopes takes over
+                                    rec.holdPhase[abName] = "pattern"
                                     if legs then
                                         ATC.issueVectorInstruction(unitName, rec, unit, abPos,
                                             finalGate, legs.downwindHdg, now, abName)
