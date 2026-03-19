@@ -1,0 +1,34 @@
+{
+  "runtime": {
+    "version": "Lua 5.1"
+  },
+  "diagnostics": {
+    "globals": [
+      "ATC",
+      "_ATC_BASE",
+      "timer",
+      "trigger",
+      "world",
+      "env",
+      "Unit",
+      "Group",
+      "Airbase",
+      "Coalition",
+      "coord",
+      "land",
+      "atmosphere",
+      "missionCommands",
+      "net",
+      "lfs",
+      "io",
+      "log",
+      "DCS",
+      "mount_vfs_sound_path",
+      "coalition"
+    ]
+  },
+  "workspace": {
+    "library": [],
+    "checkThirdParty": false
+  }
+}

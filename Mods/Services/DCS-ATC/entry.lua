@@ -5,7 +5,7 @@ declare_plugin("DCS-ATC", {
     installed     = true,
     dirName       = current_mod_path,
     developerName = "DCS-ATC",
-    developerLink = "https://github.com/",
+    developerLink = "https://github.com/zbenesch/DCS_ATC",
     displayName   = _("DCS ATC Script"),
     version       = "1.0.0",
     state         = "installed",

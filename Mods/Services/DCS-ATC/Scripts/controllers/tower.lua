@@ -92,7 +92,6 @@ function ATC.onTakeoffRequest(arg)
 		fs.rwyClear = false
 		ATC.setPhase(unitName, airbaseName, "takeoff")
 		ATC.setEngagedField(unitName, airbaseName)
-		ATC.msgAll(string.format("[Traffic]  %s is taking off at %s (%s departure).", cs, airbaseName, rec.departureDirection))
 		-- Optionally, trigger handoff logic here or after liftoff event
 	else
 		ATC.msg(rec.groupId, string.format(
