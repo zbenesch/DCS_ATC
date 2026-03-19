@@ -531,7 +531,7 @@ local HOLD_SPEED      = 300   -- hold speed kt (uniform for all stack levels)
 local HOLD_LEG_NM    = 5      -- outbound leg length NM
 local ENTRY_BASE_AGL = 3000   -- altitude AGL for entry / base leg
 local FINAL_AGL      = 1500   -- altitude AGL at the final approach point (8 NM)
-local PATTERN_CORNER_NM  = 1.5   -- within this NM of a CRP corner: advance to next
+local PATTERN_CORNER_NM  = 0.5   -- within this NM of a CRP corner: advance to next
 local PATTERN_FINAL_ALT  = 1500  -- ft; after full lap at this altitude -> turn final
 function ATC.getApproachGates(rwy, unit, startAlt)
     local spds = ATC.getApproachSpeeds(unit)

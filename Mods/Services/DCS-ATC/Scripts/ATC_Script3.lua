@@ -4,7 +4,7 @@ local _runwaySnapshot = ATC.runways  -- watchdog snapshot for this chunk
 -- Constants used by pattern / glideslope logic in this chunk
 local ENTRY_BASE_AGL     = 3000   -- altitude AGL for entry / base leg
 local FINAL_AGL          = 1500   -- altitude AGL at the final approach point
-local PATTERN_CORNER_NM  = 1.5    -- within this NM of a CRP corner: advance to next
+local PATTERN_CORNER_NM  = 0.5    -- within this NM of a CRP corner: advance to next
 local PATTERN_FINAL_ALT  = 1500   -- ft; after full lap at this altitude -> turn final
 
 -- Helper functions shared with ATC_Script2 (duplicated here so this chunk is self-contained)
@@ -398,26 +398,16 @@ function ATC.initPatternEntry(unitName, airbaseName)
     local uPos   = unit:getPoint()
     local abPos  = ATC.getAirbasePos(ab)
     local distNM = ATC.mToNM(ATC.distVec3H(uPos, abPos))
-    local ctrlNm = rwy.ctrlZoneNm or 8
     local slotAlt = ATC.assignPatternSlot(unitName, airbaseName)
     rec.patternAlt[airbaseName]      = slotAlt
     rec.lastVector[airbaseName]      = timer.getTime()
+    -- Always start from CRP 1 so the full published loop is flown.
     local gate = { altFt = slotAlt, noSpeed = true }
-    if distNM > ctrlNm then
-        rec.patternCornerIdx[airbaseName] = 1
-        local hdg = hdgTo(uPos, corners[1].pos)
-        ATC.log(string.format("INIT  %-10s @%s  OUTSIDE(%.1fNM) -> corner1(%s) hdg=%.0f alt=%d",
-            unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName)
-    else
-        local nearIdx = ATC.nearestCornerIdx(corners, uPos)
-        local nextIdx = (nearIdx % #corners) + 1
-        rec.patternCornerIdx[airbaseName] = nextIdx
-        local hdg = hdgTo(uPos, corners[nextIdx].pos)
-        ATC.log(string.format("INIT  %-10s @%s  INSIDE(%.1fNM) -> corner%d(%s) hdg=%.0f alt=%d",
-            unitName, airbaseName, distNM, nextIdx, corners[nextIdx].name, hdg, slotAlt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName)
-    end
+    rec.patternCornerIdx[airbaseName] = 1
+    local hdg = hdgTo(uPos, corners[1].pos)
+    ATC.log(string.format("INIT  %-10s @%s  dist=%.1fNM -> corner1(%s) hdg=%.0f alt=%d",
+        unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
+    ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName)
 end
 local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local ab  = Airbase.getByName(abName)
