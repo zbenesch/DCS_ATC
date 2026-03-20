@@ -5,6 +5,8 @@ local _runwaySnapshot = ATC.runways  -- watchdog snapshot for this chunk
 local ENTRY_BASE_AGL     = 3000   -- altitude AGL for entry / base leg
 local FINAL_AGL          = 1500   -- altitude AGL at the final approach point
 local PATTERN_CORNER_NM  = 0.5    -- within this NM of a CRP corner: advance to next
+local PATTERN_CORNER1_NM = 2.0    -- larger capture only for CRP seq1 to avoid conflicting vectors near entry
+local PATTERN_CP5_NM     = 0.5    -- CP5 zone radius (0.5 NM = 1 NM diameter)
 local PATTERN_FINAL_ALT  = 1500   -- ft; after full lap at this altitude -> turn final
 
 -- Helper functions shared with ATC_Script2 (duplicated here so this chunk is self-contained)
@@ -20,7 +22,7 @@ end
 local function controllerCall(unitName, airbaseName, controller)
     local unit = Unit.getByName(unitName)
     local cs   = (unit and unit:getCallsign()) or unitName or "Unknown"
-    local field = airbaseName or "Airfield"
+    local field = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName or "Airfield"
     local ctrl  = controller or "Tower"
     return string.format("%s, %s %s, ", cs, field, ctrl)
 end
@@ -60,10 +62,68 @@ function ATC.retryAddMenus(_, t)
     startupScanPlayers()
     return t + 15
 end
+local function updateAircraftTelemetry(unitName, unit, now)
+    if not unitName or not unit or not unit:isExist() then return end
+    ATC.state.telemetry = ATC.state.telemetry or {}
+    local pos = unit:getPoint()
+    local headingDeg = nil
+    local vel = unit:getVelocity()
+    if vel then
+        headingDeg = math.deg(math.atan2(vel.z, vel.x))
+        if headingDeg < 0 then headingDeg = headingDeg + 360 end
+    end
+    local aoaDeg = nil
+    if unit.getAngleOfAttack then
+        local ok, aoa = pcall(function() return unit:getAngleOfAttack() end)
+        if ok and type(aoa) == "number" then
+            if math.abs(aoa) <= (2 * math.pi + 0.001) then
+                aoaDeg = math.deg(aoa)
+            else
+                aoaDeg = aoa
+            end
+        end
+    end
+    local radios = {}
+    if ATC.getRadioFrequencies then
+        local radioData = ATC.getRadioFrequencies(unitName)
+        if radioData then
+            for radioIdx, mhz in pairs(radioData) do
+                radios[radioIdx] = mhz
+            end
+        end
+    end
+    ATC.state.telemetry[unitName] = {
+        t = now,
+        posX = pos and pos.x or nil,
+        posY = pos and pos.y or nil,
+        posZ = pos and pos.z or nil,
+        headingDeg = headingDeg,
+        altAglFt = ATC.getAltAglFt and ATC.getAltAglFt(unit) or nil,
+        speedKt = ATC.getSpeedKt and ATC.getSpeedKt(unit) or nil,
+        aoaDeg = aoaDeg,
+        radios = radios,  -- [radioIndex] = mhz (up to 4 radios)
+    }
+end
+
+function ATC.updateAllAircraftTelemetry(now)
+    local tNow = now or timer.getTime()
+    for unitName, _ in pairs(ATC.state.aircraft) do
+        local unit = Unit.getByName(unitName)
+        if unit and ATC.isPlayer(unit) then
+            updateAircraftTelemetry(unitName, unit, tNow)
+        elseif ATC.state.telemetry then
+            ATC.state.telemetry[unitName] = nil
+        end
+    end
+end
 local function runVectoring(_, t)
     if (not ATC.runways or next(ATC.runways) == nil) and _runwaySnapshot then
         ATC.runways = _runwaySnapshot
         ATC.log("WARN  ATC.runways restored in runVectoring at t=" .. tostring(t))
+    end
+    local okTelem, errTelem = pcall(ATC.updateAllAircraftTelemetry, t)
+    if not okTelem then
+        trigger.action.outText("[DCS-ATC] telemetry update ERROR: " .. tostring(errTelem), 30)
     end
     local ok, err = pcall(ATC.checkVectoring)
     if not ok then
@@ -92,19 +152,54 @@ function ATC.onSimStart()
         _runwaySnapshot = ATC.runways
     end
     ATC._timersStarted = true
+    local function clearUnitStateSilent(unitName, why)
+        if not unitName or unitName == "" then return end
+        local rec = ATC.state.aircraft[unitName]
+        if not rec then return end
+        ATC.log(string.format("EVNT  %s -> clear ATC state for unit=%s", tostring(why or "unknown"), unitName))
+        ATC.removeRecord(unitName)
+    end
     world.addEventHandler({
         onEvent = function(self, event)
-            if event.id ~= world.event.S_EVENT_BIRTH then return end
+            if not event then return end
+            local ev = world.event or {}
+            local id = event.id
             local unit = event.initiator
-            if not unit or not unit:isExist() then return end
-            local pName = unit:getPlayerName()
-            if not pName or pName == "" then return end
-            local uName = unit:getName()
-            local grp   = unit:getGroup()
-            if not grp then return end
-            ATC.log("EVNT  S_EVENT_BIRTH player=" .. pName .. " unit=" .. uName)
-            ATC.getOrCreateRecord(uName, grp:getID())
-            ATC.buildFullMenu(uName)
+            local uName = unit and unit:getName() or nil
+
+            if id == ev.S_EVENT_BIRTH then
+                if not unit or not unit:isExist() then return end
+                local pName = unit:getPlayerName()
+                if not pName or pName == "" then return end
+                local grp = unit:getGroup()
+                if not grp then return end
+                ATC.log("EVNT  S_EVENT_BIRTH player=" .. pName .. " unit=" .. uName)
+                ATC.getOrCreateRecord(uName, grp:getID())
+                ATC.buildFullMenu(uName)
+                return
+            end
+
+            if id == ev.S_EVENT_CRASH
+               or id == ev.S_EVENT_DEAD
+               or id == ev.S_EVENT_PILOT_DEAD
+               or id == ev.S_EVENT_EJECTION
+               or id == ev.S_EVENT_PLAYER_LEAVE_UNIT then
+                clearUnitStateSilent(uName, id)
+                return
+            end
+
+            if id == ev.S_EVENT_PLAYER_ENTER_UNIT then
+                if not unit or not unit:isExist() then return end
+                local pName = unit:getPlayerName()
+                if not pName or pName == "" then return end
+                local grp = unit:getGroup()
+                if not grp then return end
+                clearUnitStateSilent(uName, "re-enter")
+                ATC.log("EVNT  S_EVENT_PLAYER_ENTER_UNIT player=" .. pName .. " unit=" .. uName)
+                ATC.getOrCreateRecord(uName, grp:getID())
+                ATC.buildFullMenu(uName)
+                return
+            end
         end
     })
     local t0 = timer.getTime()
@@ -133,6 +228,7 @@ function ATC.checkGlideslopes()
                 if rec and unit and ATC.isPlayer(unit) then
                     ensureGuidanceTables(rec, abName)
                     local ph     = ATC.getPhase(unitName, abName)
+                    local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(abName) or abName
                     local distNM = ATC.distUnitToBase(unit, ab)
                     if distNM and distNM <= ATC.config.finalNM then
                         local cs     = unit:getCallsign() or ""
@@ -154,7 +250,7 @@ function ATC.checkGlideslopes()
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sContact %s Tower on %s.\n" ..
                                     "%.1f NM from threshold.",
-                                    controllerCall(unitName, abName, "Approach"), abName, freqStr, distNM),
+                                    controllerCall(unitName, abName, "Approach"), fieldName, freqStr, distNM),
                                     false, abName, "Approach")
                                 rec.handedOffToTower[abName] = true
                             end
@@ -188,7 +284,7 @@ function ATC.checkGlideslopes()
                                     local windDir, windSpd = ATC.getWind(abPos)
                                     ATC.radioMsg(rec.groupId, abPos, string.format(
                                         "%s, %s tower, cleared to land, wind %03d at %d, check gear down.",
-                                        cs, abName, windDir, windSpd),
+                                        cs, fieldName, windDir, windSpd),
                                         false, abName, controller)
                                     rec.finalCleared = rec.finalCleared or {}
                                     rec.finalCleared[abName] = true
@@ -196,7 +292,7 @@ function ATC.checkGlideslopes()
                                 else
                                     ATC.radioMsg(rec.groupId, abPos, string.format(
                                         "%s, %s tower, runway occupied, return to pattern and await clearance.",
-                                        cs, abName),
+                                        cs, fieldName),
                                         false, abName, controller)
                                     rec.lastGuidance[abName] = now
                                 end
@@ -286,6 +382,43 @@ function ATC.getPatternCorners(rwy)
         table.insert(corners, { pos = p, name = crp.name, seq = crp.seq or 99 })
     end
     table.sort(corners, function(a, b) return a.seq < b.seq end)
+    if #corners >= 4 then
+        local c4 = corners[4]
+        local abPos = Airbase.getByName and rwy and nil
+        local airbasePos = nil
+        do
+            if Airbase and Airbase.getByName and ATC.runways then
+                for abName, rr in pairs(ATC.runways) do
+                    if rr == rwy then
+                        local ab = Airbase.getByName(abName)
+                        if ab then
+                            airbasePos = ATC.getAirbasePos(ab)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        if c4 and c4.pos and airbasePos then
+            local finalTrue = ATC.toTrue(rwy.hdg or 0)
+            local rad = math.rad(finalTrue)
+            local ux, uz = math.cos(rad), math.sin(rad)
+            local vx = c4.pos.x - airbasePos.x
+            local vz = c4.pos.z - airbasePos.z
+            local t = (vx * ux) + (vz * uz)
+            local cp5 = {
+                pos = {
+                    x = airbasePos.x + t * ux,
+                    y = airbasePos.y,
+                    z = airbasePos.z + t * uz,
+                },
+                name = "Final approach point",
+                seq = 5,
+                isCP5 = true,
+            }
+            table.insert(corners, cp5)
+        end
+    end
     return corners
 end
 function ATC.nearestCornerIdx(corners, uPos)
@@ -412,8 +545,10 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
     local hdgDiff = math.abs(angleDiff(currHdg, targetHdg))
     local altDiff = altFt and math.abs(altFt - gate.altFt) or 999
     local spdDiff = (currSpd and not gate.noSpeed) and math.abs(currSpd - gate.speedKt) or 0
+     local altTol = gate.altFt and math.max(50, gate.altFt * 0.05) or 50
+     local altOnTarget = gate.noAltitude or (altFt and gate.altFt and altDiff <= altTol)
     if hdgDiff <= 10
-       and altDiff <= math.max(50, gate.altFt * 0.05)
+         and altOnTarget
        and (gate.noSpeed or spdDiff <= math.max(10, gate.speedKt * 0.05)) then
         ATC.log(string.format("IVEC  %-10s @%-20s  -> SUPPRESSED (on params)", unitName, abName))
         rec.lastVector[abName] = now
@@ -434,32 +569,61 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
     if distNM then
         hdgPart = hdgPart .. string.format(" for %.1f NM", distNM)
     end
-    local altTol = math.max(50, math.floor(gate.altFt * 0.03))
     local altPart
-    if altDiff <= altTol then
-        altPart = "maintain " .. gate.altFt .. " ft"
-    elseif altFt and altFt > gate.altFt then
-        altPart = "descend to " .. gate.altFt .. " ft"
+    if not gate.noAltitude and gate.altFt then
+        local altTolLocal = math.max(50, math.floor(gate.altFt * 0.03))
+        if altDiff <= altTolLocal then
+            altPart = "maintain " .. gate.altFt .. " ft"
+        elseif altFt and altFt > gate.altFt then
+            altPart = "descend to " .. gate.altFt .. " ft"
+        else
+            altPart = "climb to " .. gate.altFt .. " ft"
+        end
     else
-        altPart = "climb to " .. gate.altFt .. " ft"
+        altPart = nil
     end
     local ccPrefix = controllerCall(unitName, abName, "Approach")
     local reportPart = ""
     if gate.noSpeed then
-        ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s%s, %s.%s", ccPrefix, hdgPart, altPart, reportPart), true, abName, "Approach")
+        if altPart then
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s, %s.%s", ccPrefix, hdgPart, altPart, reportPart), true, abName, "Approach")
+        else
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s.%s", ccPrefix, hdgPart, reportPart), true, abName, "Approach")
+        end
     else
         local spdTol = math.max(10, math.floor(gate.speedKt * 0.05))
+        local reduceOnly = gate.reduceOnly == true
         local spdPart
-        if spdDiff <= spdTol then
-            spdPart = "maintain " .. gate.speedKt .. " kt"
-        elseif currSpd and currSpd > gate.speedKt then
-            spdPart = "reduce speed to " .. gate.speedKt .. " kt"
+        if reduceOnly then
+            if currSpd and currSpd > (gate.speedKt + spdTol) then
+                spdPart = "reduce speed to " .. gate.speedKt .. " kt"
+            elseif currSpd and spdDiff <= spdTol then
+                spdPart = "maintain " .. gate.speedKt .. " kt"
+            end
         else
-            spdPart = "increase speed to " .. gate.speedKt .. " kt"
+            if spdDiff <= spdTol then
+                spdPart = "maintain " .. gate.speedKt .. " kt"
+            elseif currSpd and currSpd > gate.speedKt then
+                spdPart = "reduce speed to " .. gate.speedKt .. " kt"
+            else
+                spdPart = "increase speed to " .. gate.speedKt .. " kt"
+            end
         end
-        ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s%s, %s, %s.%s", ccPrefix, hdgPart, altPart, spdPart, reportPart), true, abName, "Approach")
+        if spdPart and altPart then
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s, %s, %s.%s", ccPrefix, hdgPart, altPart, spdPart, reportPart), true, abName, "Approach")
+        elseif spdPart then
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s, %s.%s", ccPrefix, hdgPart, spdPart, reportPart), true, abName, "Approach")
+        elseif altPart then
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s, %s.%s", ccPrefix, hdgPart, altPart, reportPart), true, abName, "Approach")
+        else
+            ATC.radioMsg(rec.groupId, abPos,
+                string.format("%s%s.%s", ccPrefix, hdgPart, reportPart), true, abName, "Approach")
+        end
     end
     rec.lastVector[abName] = now
 end
@@ -508,8 +672,42 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
     local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy)
     local nextAlt = patAlt
     local gate = { altFt = patAlt, noSpeed = true }
-    if patAlt > protectedAlt then
+    local isCp5Target = corners[nextIdx] and corners[nextIdx].isCP5
+    local currSpd = ATC.getSpeedKt(unit)
+    if (nextIdx == 2 or nextIdx == 3) and currSpd and currSpd > 305 then
+        gate.noSpeed = false
+        gate.speedKt = 300
+        gate.reduceOnly = true
+    elseif isCp5Target and currSpd and currSpd > 255 then
+        gate.noSpeed = false
+        gate.speedKt = 250
+        gate.reduceOnly = true
+    end
+    if not isCp5Target and patAlt > protectedAlt then
         nextAlt = math.max(protectedAlt, patAlt - 1000)
+    end
+    if isCp5Target then
+        gate.noAltitude = true
+    end
+    if corners[cornerIdx] and corners[cornerIdx].isCP5 then
+        local inboundHdg = ATC.toTrue(rwy.hdg) % 360
+        local finalGate = { altFt = patAlt, noSpeed = true }
+        ATC.log(string.format("FINAL %-10s @%s  cp5 reached -> final hdg=%.0f alt=%d",
+            unitName, abName, inboundHdg, finalGate.altFt))
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName, abPos, nil)
+        rec.towerHandoffReady = rec.towerHandoffReady or {}
+        rec.towerCheckedIn = rec.towerCheckedIn or {}
+        rec.towerHandoffReady[abName] = true
+        rec.towerCheckedIn[abName] = false
+        rec.handedOffToTower = rec.handedOffToTower or {}
+        rec.handedOffToTower[abName] = true
+        ATC.buildFullMenu(unitName)
+        rec.patternAlt[abName] = nil
+        rec.patternCornerIdx[abName] = nil
+        ATC.setPhase(unitName, abName, "approach")
+        if not rec.holdPhase then rec.holdPhase = {} end
+        rec.holdPhase[abName] = "pattern"
+        return true
     end
     if nextIdx == 1 then
         if patAlt <= floorAlt and protectedAlt <= floorAlt then
@@ -566,7 +764,13 @@ function ATC.handlePatternReport(unitName, abName)
     local dx = target.pos.x - uPos.x
     local dz = target.pos.z - uPos.z
     local distToCorner = math.sqrt(dx * dx + dz * dz) / 1852
-    local reportTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local baseTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local reportTolerance = baseTolerance
+    if cornerIdx == 1 then
+        reportTolerance = math.max(baseTolerance, PATTERN_CORNER1_NM)
+    elseif target and target.isCP5 then
+        reportTolerance = PATTERN_CP5_NM
+    end
     if distToCorner > reportTolerance then return false end
     local abPos = ATC.getAirbasePos(ab)
     ATC.log(string.format("RPTCRP %-10s @%s  corner=%d(%s) dist=%.1fNM -> advance",
@@ -608,10 +812,17 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local dx            = target.pos.x - uPos.x
     local dz            = target.pos.z - uPos.z
     local distToCorner  = math.sqrt(dx * dx + dz * dz) / 1852
-    local reportTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local baseTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local reportTolerance = baseTolerance
+    if cornerIdx == 1 then
+        reportTolerance = math.max(baseTolerance, PATTERN_CORNER1_NM)
+    elseif target and target.isCP5 then
+        reportTolerance = PATTERN_CP5_NM
+    end
     local nearestIdx = ATC.nearestCornerIdx(corners, uPos)
     local nextIdx = (cornerIdx % #corners) + 1
-    if distToCorner <= reportTolerance or nearestIdx == nextIdx then
+    local allowNearestShortcut = not (target and target.isCP5)
+    if distToCorner <= reportTolerance or (allowNearestShortcut and nearestIdx == nextIdx) then
         advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
     end
 end
@@ -622,6 +833,24 @@ function ATC.checkVectoring()
         if unit and ATC.isPlayer(unit) and rec.activeField then
             local abName = rec.activeField
             local ph     = ATC.getPhase(unitName, abName)
+            if (ph == "inbound" or ph == "approach")
+               and rec.patternAlt and rec.patternAlt[abName] then
+                local ab = Airbase.getByName(abName)
+                local distNM = ab and ATC.distUnitToBase(unit, ab)
+                rec.report15Done = rec.report15Done or {}
+                rec.report15ReminderSent = rec.report15ReminderSent or {}
+                if distNM and distNM <= 15
+                   and not rec.report15Done[abName]
+                   and not rec.report15ReminderSent[abName] then
+                    local abPos = ab and ATC.getAirbasePos(ab)
+                    local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(abName) or abName
+                    ATC.radioMsg(rec.groupId, abPos, string.format(
+                        "%sreport 15 nautical miles from %s.",
+                        controllerCall(unitName, abName, "Approach"), fieldName),
+                        false, abName, "Approach")
+                    rec.report15ReminderSent[abName] = true
+                end
+            end
             if (ph == "inbound" or ph == "approach")
                and rec.patternAlt and rec.patternAlt[abName] then
                 local ok, err = pcall(drivePatternForUnit, unitName, rec, unit, abName, now)

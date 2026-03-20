@@ -50,7 +50,7 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
     if not rec or not rec.menuRoot then return end
     local abName = fieldEntry.name
     local distKm = math.floor(fieldEntry.distM / 1000 + 0.5)
-    local rwy    = ATC.runways and ATC.runways[abName]
+    local rwy    = ATC.getRunway(abName)
     local freqStr = (rwy and rwy.frequencies and rwy.frequencies.approach)
                     and ("  APP " .. rwy.frequencies.approach.mhz) or ""
     local label  = abName .. "  (" .. distKm .. " km)" .. freqStr
@@ -81,6 +81,15 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     elseif arrivalEngaged then
+        local towerReady = rec.towerHandoffReady and rec.towerHandoffReady[abName]
+        local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[abName]
+        if towerReady and not towerCheckedIn then
+            missionCommands.addCommandForGroup(gid, "Handoff to Tower",
+                fieldMenu, function(a) ATC.onHandoffToTower(a) end, arg)
+        elseif towerReady and towerCheckedIn then
+            missionCommands.addCommandForGroup(gid, "Request Landing",
+                fieldMenu, function(a) ATC.onRequestLanding(a) end, arg)
+        end
         missionCommands.addCommandForGroup(gid, "Report Position",
             fieldMenu, function(a) ATC.onPositionReport(a) end, arg)
         missionCommands.addCommandForGroup(gid, "Acknowledge / Wilco",
@@ -211,6 +220,10 @@ function ATC.clearEngagement(unitName)
         if rec.landingCleared then rec.landingCleared[field]  = nil end
         if rec.patternAdv     then rec.patternAdv[field]     = nil end
         if rec.holdPhase      then rec.holdPhase[field]      = nil end
+        if rec.report15Done   then rec.report15Done[field]   = nil end
+        if rec.report15ReminderSent then rec.report15ReminderSent[field] = nil end
+        if rec.towerHandoffReady then rec.towerHandoffReady[field] = nil end
+        if rec.towerCheckedIn then rec.towerCheckedIn[field] = nil end
         if rec.postLandingReady then rec.postLandingReady[field] = nil end
     end
     ATC.buildFullMenu(unitName)
@@ -218,14 +231,14 @@ end
 local function preamble(unitName, airbaseName, controller)
     local unit = Unit.getByName(unitName)
     local cs   = (unit and unit:getCallsign()) or unitName or "Unknown"
-    local field = airbaseName or "Airfield"
+    local field = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName or "Airfield"
     local ctrl  = controller or "Tower"
     return string.format("%s, %s %s.", cs, field, ctrl)
 end
 local function controllerCall(unitName, airbaseName, controller)
     local unit = Unit.getByName(unitName)
     local cs   = (unit and unit:getCallsign()) or unitName or "Unknown"
-    local field = airbaseName or "Airfield"
+    local field = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName or "Airfield"
     local ctrl  = controller or "Tower"
     return string.format("%s, %s %s, ", cs, field, ctrl)
 end
@@ -245,6 +258,43 @@ local function getController(unitName, airbaseName)
     end
     return "Tower"
 end
+
+local function checkFrequencyAndRespond(unitName, airbaseName, controller, rec)
+    -- Validate that player is on the correct frequency
+    -- If not, send tuning instruction and return true (to skip further processing)
+    -- Uses cooldown to silence duplicate rejections (same controller type within 10 sec)
+    if not unitName or not airbaseName or not controller or not rec then return false end
+    
+    if not ATC.isOnFrequency(unitName, airbaseName, string.lower(controller)) then
+        local ctrlLower = string.lower(controller)
+        local now = timer.getTime()
+        
+        -- Cooldown: only send rejection message once per controller type per 10 seconds
+        rec.lastFreqRejection = rec.lastFreqRejection or {}
+        local lastRejAt = rec.lastFreqRejection[ctrlLower] or 0
+        
+        if (now - lastRejAt) > 10.0 then
+            local rwy = ATC.getRunway(airbaseName)
+            local freq = rwy and rwy.frequencies and rwy.frequencies[ctrlLower]
+            local unit = Unit.getByName(unitName)
+            local cs = unit and unit:getCallsign() or ""
+            local spokenField = ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+            
+            if freq and freq.mhz then
+                ATC.msg(rec.groupId, 
+                    cs .. ", we read you but you are not on " .. spokenField .. " " .. controller .. 
+                    " frequency. Tune " .. string.format("%.1f", freq.mhz) .. " MHz.",
+                    true, airbaseName, controller)
+            else
+                ATC.msg(rec.groupId, cs .. ", check your frequency.", true, airbaseName, controller)
+            end
+            rec.lastFreqRejection[ctrlLower] = now
+        end
+        return true  -- Skip further processing
+    end
+    return false  -- Frequency is OK, continue
+end
+
 function ATC.onCancelRequest(arg)
     local unitName    = arg.unitName
     local airbaseName = arg.airbaseName
@@ -286,11 +336,45 @@ function ATC.onInboundRequest(arg)
     if not ATC._timersStarted then ATC.onSimStart() end
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
+    
+    -- Frequency check: Player must be on Approach frequency (with cooldown to silence duplicates)
+    if not ATC.isOnFrequency(unitName, airbaseName, "approach") then
+        local now = timer.getTime()
+        rec.lastFreqRejection = rec.lastFreqRejection or {}
+        local lastRejAt = rec.lastFreqRejection["approach"] or 0
+        
+        if (now - lastRejAt) > 10.0 then
+            local rwy = ATC.getRunway(airbaseName)
+            local approachFreq = rwy and rwy.frequencies and rwy.frequencies["approach"] and rwy.frequencies["approach"].mhz
+            local spokenField = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+            local cs = unit:getCallsign() or ""
+            if approachFreq then
+                ATC.msg(rec.groupId, 
+                    cs .. ", we read you but you are not on " .. spokenField .. " Approach frequency. Tune " .. 
+                    string.format("%.1f", approachFreq) .. " MHz and call back.", 
+                    true, airbaseName, "Approach")
+            else
+                ATC.msg(rec.groupId, cs .. ", try again on proper frequency.", true, airbaseName, "Approach")
+            end
+            rec.lastFreqRejection["approach"] = now
+        end
+        return
+    end
+    
     local cs     = unit:getCallsign() or ""
     local fs     = ATC.getFieldState(airbaseName)
     local ab     = Airbase.getByName(airbaseName)
     local distNM = ATC.distUnitToBase(unit, ab)
     local altFt  = ATC.getAltFt(unit)
+    local spokenField = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+    rec.report15Done = rec.report15Done or {}
+    rec.report15ReminderSent = rec.report15ReminderSent or {}
+    rec.towerHandoffReady = rec.towerHandoffReady or {}
+    rec.towerCheckedIn = rec.towerCheckedIn or {}
+    rec.report15Done[airbaseName] = nil
+    rec.report15ReminderSent[airbaseName] = nil
+    rec.towerHandoffReady[airbaseName] = nil
+    rec.towerCheckedIn[airbaseName] = nil
     local seqN   = ATC.addToLandingSeq(unitName, airbaseName)
     rec.seqNum[airbaseName] = seqN
     if rec.postLandingReady then rec.postLandingReady[airbaseName] = nil end
@@ -300,10 +384,10 @@ function ATC.onInboundRequest(arg)
     rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
     local greeting = ""
     if not rec.greeted[airbaseName]["Approach"] then
-        greeting = ATC.getDaytimeGreeting() .. ", " .. cs .. ", " .. airbaseName .. " Approach.\n"
+        greeting = ATC.getDaytimeGreeting() .. ", " .. cs .. ", " .. spokenField .. " Approach.\n"
         rec.greeted[airbaseName]["Approach"] = true
     else
-        greeting = cs .. ", " .. airbaseName .. " Approach.\n"
+        greeting = cs .. ", " .. spokenField .. " Approach.\n"
     end
     local firstVectorLine = ""
     local firstVectorVoice = ""
@@ -355,17 +439,17 @@ function ATC.onInboundRequest(arg)
             turnDir = "Fly"
         end
         firstVectorLine = string.format(
-            "\n%s heading %s for %.1f NM, %s %d ft. Report at %s.",
+            "\n%s heading %s for %.1f NM, %s %d ft. Report 15 NM from %s.",
             turnDir, ATC.fmtHdg(magHdg),
             legDistNm,
             (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
-            slotAlt, targetCorner.name)
+            slotAlt, spokenField)
         firstVectorVoice = string.format(
-            "\n%s heading %s for %.1f NM, %s %d ft. Report at %s.",
+            "\n%s heading %s for %.1f NM, %s %d ft. Report 15 NM from %s.",
             turnDir, ATC.fmtHdg(magHdg),
             legDistNm,
             (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
-            slotAlt, targetCorner.name)
+            slotAlt, spokenField)
         ATC.log(string.format("INBD  %-10s @%s  corner=%d(%s) trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
             unitName, airbaseName, targetIdx, targetCorner.name, trueHdg, magHdg, slotAlt, firstVectorLine))
     end
@@ -376,7 +460,7 @@ function ATC.onInboundRequest(arg)
         greeting,
         distStr,
         bearingText or "out",
-        airbaseName,
+        spokenField,
         ATC.sequenceNumber(seqN),
         firstVectorLine)
     local responseVoice = string.format(
@@ -391,10 +475,10 @@ function ATC.onInboundRequest(arg)
     ATC.setPhase(unitName, airbaseName, "inbound")
     local initialCallText = string.format(
         "%s approach, %s inbound for landing.\n%s at %s.",
-        airbaseName, cs, distStr, altStr)
+        spokenField, cs, distStr, altStr)
     local initialCallVoice = string.format(
         "%s approach, %s inbound for landing.\n%s at %s.",
-        airbaseName, cs, distStr, altStr)
+        spokenField, cs, distStr, altStr)
     ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach")
     local introDur = math.max(ATC.ttsDuration(initialCallVoice), 3)
     local t1       = timer.getTime() + introDur + 1.5
@@ -438,6 +522,83 @@ function ATC.onInboundRequest(arg)
         if not ok then trigger.action.outText("[DCS-ATC] clearNext ERROR: " .. tostring(err), 30) end
         return nil
     end, { airbaseName=airbaseName }, t1 + respDur + 6)
+end
+
+function ATC.onHandoffToTower(arg)
+    local unitName    = arg.unitName
+    local airbaseName = arg.airbaseName
+    local rec = ATC.state.aircraft[unitName]
+    if not rec then return end
+    local unit = Unit.getByName(unitName)
+    if not ATC.isPlayer(unit) then return end
+    
+    -- Frequency check: Player must be on Tower frequency to contact tower
+    if not ATC.isOnFrequency(unitName, airbaseName, "tower") then
+        local rwy = ATC.getRunway(airbaseName)
+        local freq = rwy and rwy.frequencies and rwy.frequencies.tower
+        local cs = unit:getCallsign() or ""
+        local fieldName = ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+        
+        if freq and freq.mhz then
+            ATC.msg(rec.groupId, 
+                cs .. ", Tower frequency is " .. string.format("%.1f", freq.mhz) .. " MHz. Standby.",
+                true, airbaseName, "Tower")
+        else
+            ATC.msg(rec.groupId, cs .. ", check your frequency.", true, airbaseName, "Tower")
+        end
+        return
+    end
+    
+    local rwy = ATC.getRunway(airbaseName)
+    local towerFreq = rwy and rwy.frequencies and rwy.frequencies.tower
+    local freqStr = towerFreq and string.format("%.3f MHz", towerFreq.mhz) or "tower frequency"
+    local cs = unit:getCallsign() or unitName or "Unknown"
+    local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+    rec.towerCheckedIn = rec.towerCheckedIn or {}
+    rec.towerCheckedIn[airbaseName] = true
+    rec.handedOffToTower = rec.handedOffToTower or {}
+    rec.handedOffToTower[airbaseName] = true
+    ATC.msg(rec.groupId, string.format(
+        "%s, switching to %s Tower on %s.\nGood day, Approach.",
+        cs, fieldName, freqStr))
+    ATC.buildFullMenu(unitName)
+end
+
+function ATC.onRequestLanding(arg)
+    local unitName    = arg.unitName
+    local airbaseName = arg.airbaseName
+    local rec = ATC.state.aircraft[unitName]
+    if not rec then return end
+    local unit = Unit.getByName(unitName)
+    if not ATC.isPlayer(unit) then return end
+    
+    -- Frequency check: Player must be on Tower frequency
+    if not ATC.isOnFrequency(unitName, airbaseName, "tower") then
+        local rwy = ATC.getRunway(airbaseName)
+        local freq = rwy and rwy.frequencies and rwy.frequencies.tower
+        local cs = unit:getCallsign() or ""
+        local fieldName = ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+        
+        if freq and freq.mhz then
+            ATC.msg(rec.groupId, 
+                cs .. ", you are not on Tower frequency. Tune " .. string.format("%.1f", freq.mhz) .. " MHz.",
+                true, airbaseName, "Tower")
+        else
+            ATC.msg(rec.groupId, cs .. ", check your frequency.", true, airbaseName, "Tower")
+        end
+        return
+    end
+    
+    local cs = unit:getCallsign() or unitName or "Unknown"
+    local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+    local ab = Airbase.getByName(airbaseName)
+    local abPos = ab and ATC.getAirbasePos(ab)
+    rec.landingCleared = rec.landingCleared or {}
+    rec.landingCleared[airbaseName] = true
+    ATC.radioMsg(rec.groupId, abPos, string.format(
+        "%s, %s Tower, continue approach. Report final.",
+        cs, fieldName), false, airbaseName, "Tower")
+    ATC.buildFullMenu(unitName)
 end
 function ATC.onTowerContact(arg)
     local unitName    = arg.unitName
@@ -548,12 +709,22 @@ function ATC.onPositionReport(arg)
     if not rec then return end
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
+    
+    local controller = getController(unitName, airbaseName)
+    if checkFrequencyAndRespond(unitName, airbaseName, controller, rec) then return end
+    
+    local ab     = Airbase.getByName(airbaseName)
+    local distNM = ATC.distUnitToBase(unit, ab)
+    if distNM and distNM <= 15 then
+        rec.report15Done = rec.report15Done or {}
+        rec.report15ReminderSent = rec.report15ReminderSent or {}
+        rec.report15Done[airbaseName] = true
+        rec.report15ReminderSent[airbaseName] = true
+    end
     if ATC.handlePatternReport and ATC.handlePatternReport(unitName, airbaseName) then
         return
     end
     local cs     = unit:getCallsign() or ""
-    local ab     = Airbase.getByName(airbaseName)
-    local distNM = ATC.distUnitToBase(unit, ab)
     local altFt  = ATC.getAltFt(unit)
     local spdKt  = ATC.getSpeedKt(unit)
     local seqN   = ATC.seqPos(unitName, airbaseName)
@@ -602,6 +773,8 @@ function ATC.onGoAround(arg)
     if rec.gearReminded    then rec.gearReminded[airbaseName]    = nil end
     if rec.lastGSDev       then rec.lastGSDev[airbaseName]       = nil end
     if rec.handedOffToTower then rec.handedOffToTower[airbaseName] = nil end
+    if rec.towerHandoffReady then rec.towerHandoffReady[airbaseName] = nil end
+    if rec.towerCheckedIn then rec.towerCheckedIn[airbaseName] = nil end
     if rec.approachGate    then rec.approachGate[airbaseName]    = nil end
     if rec.landingCleared  then rec.landingCleared[airbaseName]  = nil end
     if rec.stackAlt        then rec.stackAlt[airbaseName]        = nil end
@@ -683,16 +856,43 @@ function ATC.checkAndClearNext(airbaseName)
     local nextName = fs.landingSeq[1]
     local nextUnit = Unit.getByName(nextName)
     local ab       = Airbase.getByName(airbaseName)
-    if nextUnit and ab then
-        local distNM = ATC.distUnitToBase(nextUnit, ab)
-        local handoffNM = ATC.config.ilsHandoffNM or 8
-        if distNM and distNM > handoffNM then return end
+    local abPos = ab and ATC.getAirbasePos(ab)
+    local telem = ATC.state.telemetry and ATC.state.telemetry[nextName]
+    local tNow = timer.getTime()
+    local telemFresh = telem and telem.t and ((tNow - telem.t) <= 2.5)
+    local telemPos = telemFresh and telem.posX and telem.posZ and {
+        x = telem.posX,
+        y = telem.posY or 0,
+        z = telem.posZ,
+    } or nil
+    local distNM = nil
+    if telemPos and abPos then
+        distNM = ATC.mToNM(ATC.distVec3H(telemPos, abPos))
+    elseif nextUnit and ab then
+        distNM = ATC.distUnitToBase(nextUnit, ab)
     end
+    local handoffNM = ATC.config.ilsHandoffNM or 8
+    if distNM and distNM > handoffNM then return end
     local nextRec  = ATC.state.aircraft[nextName]
     if not nextRec then return end
+    
+    -- Frequency check: Player must be on Approach frequency to receive clearance
+    if not ATC.isOnFrequency(nextName, airbaseName, "approach") then
+        return  -- Not on correct frequency, skip clearance
+    end
+    
+    if nextRec.patternAlt and nextRec.patternAlt[airbaseName] then
+        return
+    end
     local nextCs = (nextUnit and nextUnit:getCallsign()) or ""
-    local abPos  = ab and ATC.getAirbasePos(ab)
-    local rwyC      = ATC.runways and ATC.runways[airbaseName]
+    local rwyC      = ATC.getRunway(airbaseName)
+    if abPos and rwyC then
+        local legPos = telemPos or (nextUnit and nextUnit:getPoint()) or nil
+        local leg = legPos and ATC.getPatternLeg(legPos, abPos, rwyC) or nil
+        if leg ~= "final" and leg ~= "short_final" then
+            return
+        end
+    end
     local towerFreq  = rwyC and rwyC.frequencies and rwyC.frequencies.tower
     local freqStr    = towerFreq and (towerFreq.mhz .. " MHz") or "Tower frequency"
     local holdSpeedKt = (ATC.config and ATC.config.holdSpeedKt) or 300
@@ -704,7 +904,7 @@ function ATC.checkAndClearNext(airbaseName)
     if not nextRec.landingCleared then nextRec.landingCleared = {} end
     nextRec.landingCleared[airbaseName] = true
     ATC.setPhase(nextName, airbaseName, "approach")
-    local rwyC  = ATC.runways and ATC.runways[airbaseName]
+    local rwyC  = ATC.getRunway(airbaseName)
     local elev  = (rwyC and rwyC.elevation) or 0
     for i = 2, #fs.landingSeq do
         local wName = fs.landingSeq[i]

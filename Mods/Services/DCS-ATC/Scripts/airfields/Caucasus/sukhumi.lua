@@ -1,9 +1,9 @@
-ATC.runways["Sukhumi"] = { hdg=120, reciprocal=300, elevation=43, ILSfreq=0, patternAlt=1543,
+﻿local sukhumiRwy = { hdg=120, reciprocal=300, elevation=43, ILSfreq=0, patternAlt=1543,
     frequencies = {
-        ground   = { mhz=121.800, hz=121800000 },
-        tower    = { mhz=118.700, hz=118700000 },
-        approach = { mhz=123.500, hz=123500000 },
-        departure= { mhz=124.200, hz=124200000 }
+        ground   = { mhz=121.500, hz=121500000 },
+        tower    = { mhz=120.300, hz=120300003 },
+        approach = { mhz=123.200, hz=123199997 },
+        departure= { mhz=124.300, hz=124300003 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {
@@ -13,3 +13,5 @@ ATC.runways["Sukhumi"] = { hdg=120, reciprocal=300, elevation=43, ILSfreq=0, pat
         { name="Sukhumi West", seq=4, lat=42.786400, lon=41.162683 },
     }
 }
+ATC.runways["Sukhumi"] = sukhumiRwy
+ATC.runways["Sukhumi-Babushara"] = sukhumiRwy

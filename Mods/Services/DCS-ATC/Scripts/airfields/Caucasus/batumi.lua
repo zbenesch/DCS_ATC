@@ -1,9 +1,9 @@
-ATC.runways["Batumi"] = { hdg=120, reciprocal=300, elevation=33, ILSfreq=110.30, patternAlt=1533,
+﻿ATC.runways["Batumi"] = { hdg=120, reciprocal=300, elevation=33, ILSfreq=110.30, patternAlt=1533,
     frequencies = {
-        ground   = { mhz=121.800, hz=121800000 },
-        tower    = { mhz=118.700, hz=118700000 },
-        approach = { mhz=123.500, hz=123500000 },
-        departure= { mhz=124.200, hz=124200000 }
+        ground   = { mhz=121.600, hz=121599998 },
+        tower    = { mhz=118.600, hz=118599998 },
+        approach = { mhz=123.300, hz=123300003 },
+        departure= { mhz=124.100, hz=124099998 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

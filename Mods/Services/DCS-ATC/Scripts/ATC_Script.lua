@@ -63,7 +63,7 @@ ATC.config = {
         ["AH-64D_BLK_II"]       = { clean=120, gear= 80, final= 50, maxFinal= 70 },
         ["default"]             = { clean=250, gear=180, final=150, maxFinal=200 },
     },
-    rootMenuLabel    = "[ATC] Nearby Airfields",
+    rootMenuLabel    = "[ATC options]",
     menuRefreshLabel = "  Refresh Airfield List",
     refreshInterval = 10,
     queueBroadcastInterval = 30,
@@ -78,6 +78,7 @@ ATC.config = {
 ATC.state = {
     aircraft  = {},   -- [unitName]    -> player record
     airfields = {},   -- [airbaseName] -> traffic record
+    telemetry = {},   -- [unitName] -> { t, headingDeg, altAglFt, speedKt, aoaDeg, radios={[1..4]=mhz} }
 }
 function ATC.getFieldState(airbaseName)
     if not ATC.state.airfields[airbaseName] then
@@ -114,8 +115,13 @@ function ATC.getOrCreateRecord(unitName, groupId)
             holdPhase          = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             patternCornerIdx   = {}, -- [airbaseName] = 1..#corners, which CRP to fly to next
             patternAlt         = {}, -- [airbaseName] = current stack altitude in ft (MSL)
+            report15Done       = {}, -- [airbaseName] = true once pilot reported position at/inside 15 NM
+            report15ReminderSent = {}, -- [airbaseName] = true once auto-reminder was sent at/inside 15 NM
+            towerHandoffReady  = {}, -- [airbaseName] = true once CP5 crossed and handoff action should appear
+            towerCheckedIn     = {}, -- [airbaseName] = true once pilot selected handoff to tower
             postLandingReady   = {}, -- [airbaseName] = true once landed and slowed for tower/ground handoff menu
             greeted            = {}, -- [airbaseName][controller] = true if greeted
+            lastFreqRejection  = {}, -- [controllerType] = timer.getTime() of last frequency rejection message (silences duplicates)
         }
     end
     return ATC.state.aircraft[unitName]
@@ -163,9 +169,63 @@ function ATC.msg(groupId, text, long, abName, controller)
     end
     trigger.action.outTextForGroup(groupId, text, dur, false)
 end
+local function normalizeAirbaseName(name)
+    if not name or name == "" then return nil end
+    return string.lower(name):gsub("[^%w]", "")
+end
+
+local _AIRBASE_ALIASES = {
+    ["sukhumibabushara"] = "Sukhumi",
+    ["tbilisisoganlug"]  = "Soganlug",
+}
+
+local _SPOKEN_AIRBASE_NAME = {
+    ["Anapa-Vityazevo"]      = "Anapa",
+    ["Krasnodar-Center"]     = "Krasnodar",
+    ["Krasnodar-Pashkovsky"] = "Krasnodar",
+    ["Maykop-Khanskaya"]     = "Maykop",
+    ["Senaki-Kolkhi"]        = "Senaki",
+    ["Sochi-Adler"]          = "Sochi",
+    ["Sukhumi-Babushara"]    = "Sukhumi",
+    ["Tbilisi-Lochini"]      = "Tbilisi",
+    ["Tbilisi-Soganlug"]     = "Tbilisi",
+    ["Soganlug"]             = "Tbilisi",
+}
+
+function ATC.getSpokenAirbaseName(abName)
+    if not abName or abName == "" then return "Airfield" end
+    if _SPOKEN_AIRBASE_NAME[abName] then
+        return _SPOKEN_AIRBASE_NAME[abName]
+    end
+    local canonical = _AIRBASE_ALIASES[normalizeAirbaseName(abName)]
+    if canonical and _SPOKEN_AIRBASE_NAME[canonical] then
+        return _SPOKEN_AIRBASE_NAME[canonical]
+    end
+    local first = tostring(abName):match("^([^%-]+)")
+    return first or abName
+end
+
 function ATC.getRunway(abName)
     local rdata = (ATC.runways and next(ATC.runways) ~= nil) and ATC.runways or _runwaySnapshot
-    return rdata and rdata[abName]
+    if not rdata or not abName then return nil end
+    local exact = rdata[abName]
+    if exact then return exact end
+
+    local norm = normalizeAirbaseName(abName)
+    if not norm then return nil end
+
+    local aliasKey = _AIRBASE_ALIASES[norm]
+    if aliasKey and rdata[aliasKey] then
+        return rdata[aliasKey]
+    end
+
+    for key, value in pairs(rdata) do
+        if normalizeAirbaseName(key) == norm then
+            return value
+        end
+    end
+
+    return nil
 end
 function ATC.distVec3(a, b)
     local dx = a.x - b.x
@@ -216,6 +276,20 @@ function ATC.getAltFt(unit)
     local pos = unit:getPoint()
     if not pos then return nil end
     return math.floor(ATC.mToFt(pos.y))
+end
+function ATC.getAltAglFt(unit)
+    if not unit then return nil end
+    local pos = unit:getPoint()
+    if not pos then return nil end
+    local groundM = 0
+    if land and land.getHeight then
+        local ok, h = pcall(land.getHeight, { x = pos.x, y = pos.z })
+        if ok and type(h) == "number" then
+            groundM = h
+        end
+    end
+    local aglM = pos.y - groundM
+    return math.floor(ATC.mToFt(aglM))
 end
 function ATC.getSpeedKt(unit)
     if not unit then return nil end
@@ -297,6 +371,38 @@ function ATC.getApproachSpeeds(unit)
     return ATC.config.approachSpeeds[t]
         or ATC.config.approachSpeeds["default"]
 end
+
+function ATC.isOnFrequency(unitName, airbaseName, controller)
+    -- Check if player is tuned to the correct frequency
+    -- controller = "approach", "tower", "ground", "departure"
+    -- Returns true if on correct freq, false otherwise
+    if not unitName or not airbaseName or not controller then return false end
+    
+    local rwy = ATC.getRunway(airbaseName)
+    if not rwy or not rwy.frequencies or not rwy.frequencies[controller] then
+        return false  -- No frequency defined for this controller
+    end
+    
+    local requiredFreqMhz = rwy.frequencies[controller].mhz
+    if not requiredFreqMhz then return false end
+    
+    -- Get current radio frequencies from telemetry
+    local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
+    if not telem or not telem.radios then return false end
+    
+    -- Check if ANY of the 4 radios is tuned to the correct frequency
+    -- Allow 0.05 MHz tolerance for floating point
+    local tolerance = 0.05
+    for radioIdx = 1, 4 do
+        local currentFreqMhz = telem.radios[radioIdx]
+        if currentFreqMhz and math.abs(currentFreqMhz - requiredFreqMhz) < tolerance then
+            return true
+        end
+    end
+    
+    return false
+end
+
 function ATC.ttsClean(text)
     return (text:gsub("\n", "  "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", ""))
 end
@@ -710,4 +816,7 @@ function ATC.removeRecord(unitName)
         missionCommands.removeItemForGroup(rec.groupId, rec.menuRoot)
     end
     ATC.state.aircraft[unitName] = nil
+    if ATC.state.telemetry then
+        ATC.state.telemetry[unitName] = nil
+    end
 end

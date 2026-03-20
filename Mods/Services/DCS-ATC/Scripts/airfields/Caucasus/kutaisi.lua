@@ -1,9 +1,9 @@
-ATC.runways["Kutaisi"] = { hdg=80, reciprocal=260, elevation=147, ILSfreq=109.75, patternAlt=1647,
+﻿ATC.runways["Kutaisi"] = { hdg=80, reciprocal=260, elevation=147, ILSfreq=109.75, patternAlt=1647,
     frequencies = {
-        ground   = { mhz=122.000, hz=122000000 },
-        tower    = { mhz=118.900, hz=118900000 },
-        approach = { mhz=123.700, hz=123700000 },
-        departure= { mhz=124.400, hz=124400000 }
+        ground   = { mhz=121.800, hz=121800003 },
+        tower    = { mhz=119.400, hz=119400002 },
+        approach = { mhz=123.500, hz=123500000 },
+        departure= { mhz=124.400, hz=124400002 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

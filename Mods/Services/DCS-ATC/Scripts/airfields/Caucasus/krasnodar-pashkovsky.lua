@@ -1,9 +1,9 @@
-ATC.runways["Krasnodar-Pashkovsky"] = { hdg=54, reciprocal=234, elevation=108, ILSfreq=0, patternAlt=1608,
+﻿ATC.runways["Krasnodar-Pashkovsky"] = { hdg=54, reciprocal=234, elevation=108, ILSfreq=0, patternAlt=1608,
     frequencies = {
-        ground   = { mhz=121.900, hz=121900000 },
-        tower    = { mhz=118.800, hz=118800000 },
-        approach = { mhz=123.600, hz=123600000 },
-        departure= { mhz=124.300, hz=124300000 }
+        ground   = { mhz=121.600, hz=121599998 },
+        tower    = { mhz=119.200, hz=119199997 },
+        approach = { mhz=123.300, hz=123300003 },
+        departure= { mhz=124.200, hz=124199997 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

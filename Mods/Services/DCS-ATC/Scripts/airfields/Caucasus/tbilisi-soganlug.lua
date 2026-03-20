@@ -1,9 +1,9 @@
-ATC.runways["Soganlug"] = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=0, patternAlt=3023,
+﻿ATC.runways["Soganlug"] = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=0, patternAlt=3023,
     frequencies = {
-        ground   = { mhz=121.800, hz=121800000 },
-        tower    = { mhz=118.700, hz=118700000 },
-        approach = { mhz=123.500, hz=123500000 },
-        departure= { mhz=124.200, hz=124200000 }
+        ground   = { mhz=122.000, hz=122000000 },
+        tower    = { mhz=120.200, hz=120199997 },
+        approach = { mhz=123.700, hz=123699997 },
+        departure= { mhz=124.200, hz=124199997 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

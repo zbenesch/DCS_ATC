@@ -1,11 +1,11 @@
-ATC.runways["Kobuleti"] = { hdg=70, reciprocal=250, elevation=59, ILSfreq=111.50, patternAlt=1559, patternDir="R",
+﻿ATC.runways["Kobuleti"] = { hdg=70, reciprocal=250, elevation=59, ILSfreq=111.50, patternAlt=1559, patternDir="R",
     ctrlZoneNm  = 8,
     patternAlts = { 4500, 3500, 2500, 1500 },
     frequencies = {
-        ground   = { mhz=121.900, hz=121900000 },
-        tower    = { mhz=118.800, hz=118800000 },
-        approach = { mhz=123.600, hz=123600000 },
-        departure= { mhz=124.300, hz=124300000 }
+        ground   = { mhz=122.000, hz=122000000 },
+        tower    = { mhz=119.000, hz=119000000 },
+        approach = { mhz=123.700, hz=123699997 },
+        departure= { mhz=124.200, hz=124199997 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {
