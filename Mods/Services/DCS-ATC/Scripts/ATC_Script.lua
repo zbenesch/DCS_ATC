@@ -19,6 +19,8 @@ ATC.config = {
     msgDuration        = 10,
     msgDurationLong    = 25,
     nearRadiusM        = 185200,
+    radioTxPower       = 1000,
+    radioModulation    = 0,
     gsAngleDeg         = 3.0,
     magvar             = 6,
     gsDeviationFt   = 200,
@@ -329,10 +331,36 @@ function ATC.log(msg)
     end
 end
 local _phraseSeqId = 0
-function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
+local function getPhraseAudioPath(voice, token)
+    local relPath = string.format("%s/%s.ogg", voice, token)
+    if _scriptsBase and _scriptsBase ~= "" then
+        return relPath
+    end
+    return "AUDIO/atc/" .. relPath
+end
+
+local function getControllerRadio(abName, controller)
+    local rwy     = ATC.runways and ATC.runways[abName]
+    local freqs   = rwy and rwy.frequencies
+    local ctrlKey = (controller or "Approach"):lower()
+    local freqRec = freqs and freqs[ctrlKey]
+    local fallback = freqs and freqs.approach
+    local radio   = freqRec or fallback or {}
+    local freqHz  = radio.hz or 251000000
+    local modulation = radio.modulation
+    if modulation == nil then
+        modulation = ATC.config.radioModulation or 0
+    end
+    local power = radio.power or ATC.config.radioTxPower or 1000
+    return freqHz, modulation, power
+end
+
+function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
     if not tokens or #tokens == 0 then return end
     voice  = voice  or "david"
     startT = startT or (timer.getTime() + 0.05)
+    modulation = modulation or ATC.config.radioModulation or 0
+    power = power or ATC.config.radioTxPower or 1000
     _phraseSeqId = _phraseSeqId + 1
     local seqId = _phraseSeqId
     local t = startT
@@ -340,10 +368,10 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
     for i, token in ipairs(tokens) do
         local dur  = phraseDur[voice .. "/" .. token] or 0.45
         local name = string.format("ATC_%d_%d", seqId, i)
-        local path = string.format("%s/%s.ogg", voice, token)
-        local _pos, _f, _n, _p = abPos, freqHz, name, path
+        local path = getPhraseAudioPath(voice, token)
+        local _pos, _f, _n, _p, _m, _w = abPos, freqHz, name, path, modulation, power
         timer.scheduleFunction(function()
-            trigger.action.radioTransmission(_p, _pos, 0, false, _f, 100, _n)
+            trigger.action.radioTransmission(_p, _pos, _m, false, _f, _w, _n)
             return nil
         end, nil, t)
         t = t + dur + 0.05   -- 50 ms gap between clips
@@ -429,17 +457,12 @@ function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
     ATC.msg(groupId, text, long, abName, controller)
     if abPos and abName then
         local ok, err = pcall(function()
-            local rwy      = ATC.runways and ATC.runways[abName]
             controller     = controller or "Approach"
-            local freqs    = rwy and rwy.frequencies
-            local ctrlKey  = controller:lower()
-            local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
-                             or (freqs and freqs.approach and freqs.approach.hz)
-                             or 251000000
+            local freqHz, modulation, power = getControllerRadio(abName, controller)
             local voice    = ATC.getStationVoice(abName, controller)
             local tokens   = ATC.textToTokens(text)
             local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(text))
-            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
+            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
         end)
         if not ok then
             ATC.log(string.format("WARN  radioMsg audio fallback for %s/%s: %s",
@@ -466,17 +489,12 @@ function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, contr
     end
     if abPos and abName then
         local ok, err = pcall(function()
-            local rwy      = ATC.runways and ATC.runways[abName]
             controller     = controller or "Approach"
-            local freqs    = rwy and rwy.frequencies
-            local ctrlKey  = controller:lower()
-            local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
-                             or (freqs and freqs.approach and freqs.approach.hz)
-                             or 251000000
+            local freqHz, modulation, power = getControllerRadio(abName, controller)
             local voice    = ATC.getStationVoice(abName, controller)
             local tokens   = ATC.textToTokens(spoken)
             local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
-            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
+            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
         end)
         if not ok then
             ATC.log(string.format("WARN  radioMsgCustom audio fallback for %s/%s: %s",

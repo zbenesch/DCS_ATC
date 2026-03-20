@@ -8,6 +8,24 @@ local function formatControllerFreq(rwy, controllerName)
     return controllerName
 end
 
+local function isRussianAircraft(unitName)
+    local unit = Unit.getByName(unitName)
+    if not unit then return false end
+    local typeName = unit:getTypeName() or ""
+    return (typeName:match("^Su%-") or typeName:match("^MiG%-") or 
+            typeName:match("^Mi%-") or typeName:match("^Ka%-") or typeName:match("^Yak%-"))
+end
+
+local function formatRangeText(unitName, radiusM)
+    local nearKm = math.floor(((radiusM or 0) / 1000) + 0.5)
+    local nearNM = math.floor(((radiusM or 0) / 1852) + 0.5)
+    if isRussianAircraft(unitName) then
+        return string.format("%d km", nearKm)
+    else
+        return string.format("%d nm", nearNM)
+    end
+end
+
 local function isArrivalEngaged(rec, airbaseName, phase)
     if not rec or rec.engagedField ~= airbaseName then return false end
     if phase == "inbound" or phase == "approach" or phase == "final"
@@ -135,6 +153,7 @@ function ATC.buildFullMenu(unitName)
         return
     end
     local nearby = ATC.getNearbyAirbases(uPos, ATC.config.nearRadiusM)
+    local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)
     local nameList = {}
     for _, fe in ipairs(nearby) do nameList[#nameList + 1] = fe.name end
     rec.nearbyFields = nameList
@@ -143,7 +162,7 @@ function ATC.buildFullMenu(unitName)
         root, ATC.onRefreshMenu, unitName)
     if #nearby == 0 then
         missionCommands.addCommandForGroup(rec.groupId,
-            "  (No airfields within 100 km)",
+            string.format("  (No airfields within %s)", rangeText),
             root, function() end, nil)
         return
     end
@@ -168,10 +187,11 @@ end
 function ATC.onRefreshMenu(unitName)
     local rec = ATC.state.aircraft[unitName]
     if not rec then return end
+    local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)
     ATC.buildFullMenu(unitName)
     ATC.msg(rec.groupId,
         "[ATC]  Airfield list refreshed.\n" ..
-        "Showing airbases within 100 km of your current position.")
+        string.format("Showing airbases within %s of your current position.", rangeText))
 end
 function ATC.setEngagedField(unitName, airbaseName)
     local rec = ATC.state.aircraft[unitName]
@@ -365,10 +385,10 @@ function ATC.onInboundRequest(arg)
         firstVectorVoice)
     ATC.setPhase(unitName, airbaseName, "inbound")
     local initialCallText = string.format(
-        "%s traffic, %s inbound for landing.\n%s at %s.",
+        "%s approach, %s inbound for landing.\n%s at %s.",
         airbaseName, cs, distStr, altStr)
     local initialCallVoice = string.format(
-        "%s traffic, %s inbound for landing.\n%s at %s.",
+        "%s approach, %s inbound for landing.\n%s at %s.",
         airbaseName, cs, distStr, altStr)
     ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach")
     local introDur = math.max(ATC.ttsDuration(initialCallVoice), 3)

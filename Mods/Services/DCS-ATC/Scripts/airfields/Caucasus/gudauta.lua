@@ -6,5 +6,11 @@ ATC.runways["Gudauta"] = { hdg=150, reciprocal=330, elevation=68, ILSfreq=0, pat
         departure= { mhz=124.200, hz=124200000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
-    chart = "charts/Caucasus - Aerodrome Charts.pdf"
+    chart = "charts/Caucasus - Aerodrome Charts.pdf",
+    crps = {
+        { name="Gudauta North", seq=1, lat=43.285400, lon=40.513600 },
+        { name="Gudauta East", seq=2, lat=43.152800, lon=40.697400 },
+        { name="Gudauta South", seq=3, lat=43.019100, lon=40.513600 },
+        { name="Gudauta West", seq=4, lat=43.152800, lon=40.329800 },
+    }
 }

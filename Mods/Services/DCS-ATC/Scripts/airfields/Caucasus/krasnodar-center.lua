@@ -7,8 +7,8 @@ ATC.runways["Krasnodar-Center"] = { hdg=90, reciprocal=270, elevation=98, ILSfre
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {
-        { name="Krasnodar-Center West", seq=1, lat=45.080617, lon=38.758150 },
-        { name="Krasnodar-Center North", seq=2, lat=45.183950, lon=38.951967 },
+        { name="Krasnodar-Center West", seq=1, lat=44.953933, lon=38.995950 },
+        { name="Krasnodar-Center North", seq=2, lat=45.157250, lon=39.282500 },
         { name="Krasnodar-Center Bridge", seq=3, lat=44.997200, lon=38.954883 },
         { name="Krasnodar-Center Lake", seq=4, lat=45.008700, lon=38.857917 },
     }
