@@ -147,7 +147,8 @@ function ATC.checkGlideslopes()
                             local onFinal = finalLeg and distNM <= 8
                             local onPatternEntry = patternEntryLeg and distNM <= 10 -- 10 NM default for pattern entry
                             local controller = (onFinal or onPatternEntry) and "Tower" or "Approach"
-                            if (onPatternEntry or onFinal) and not rec.handedOffToTower[abName] then
+                            if (onPatternEntry or onFinal) and not rec.handedOffToTower[abName]
+                               and not (rec.patternAlt and rec.patternAlt[abName]) then
                                 local towerFreq = rwy and rwy.frequencies and rwy.frequencies.tower
                                 local freqStr = towerFreq and (towerFreq.mhz .. " MHz") or "Tower frequency"
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -221,7 +222,7 @@ function ATC.checkGlideslopes()
                         end  -- elseif rate_limit
                         local inHold = rec.holdPhase and rec.holdPhase[abName]
                         local rwy = ATC.runways and ATC.runways[abName]
-                        if rwy and not inHold then
+                        if rwy and not inHold and not (rec.patternAlt and rec.patternAlt[abName]) then
                             local legs = ATC.getPatternLegs(rwy)
                             local vel  = unit:getVelocity()
                             local acHdg = nil
@@ -443,7 +444,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         altPart = "climb to " .. gate.altFt .. " ft"
     end
     local ccPrefix = controllerCall(unitName, abName, "Approach")
-    local reportPart = reportPoint and (" Report at " .. reportPoint .. ".") or ""
+    local reportPart = ""
     if gate.noSpeed then
         ATC.radioMsg(rec.groupId, abPos,
             string.format("%s%s, %s.%s", ccPrefix, hdgPart, altPart, reportPart), true, abName, "Approach")
@@ -584,15 +585,15 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local distNM    = ATC.mToNM(ATC.distVec3H(uPos, abPos))
     local patAlt    = rec.patternAlt[abName]
     local ctrlNm    = rwy.ctrlZoneNm or 8
-    local lastT     = rec.lastVector[abName] or 0
-    local interval  = ATC.config.vectoringInterval or 25
+    local lastT        = rec.lastVector[abName] or 0
+    local outerInterval = 30   -- re-announce only every 30 s while outside the control zone
     local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
     local floorAlt  = getPatternFloorAlt(rwy)
     ATC.log(string.format("CVEC  %-10s @%s  ph=%s  dist=%.1fNM  alt=%d  corner=%d",
         unitName, abName, ATC.getPhase(unitName, abName), distNM, patAlt, cornerIdx))
     local gate = { altFt = patAlt, noSpeed = true }
     if distNM > ctrlNm then
-        if (now - lastT) > interval then
+        if (now - lastT) > outerInterval then
             local hdg = hdgTo(uPos, corners[1].pos)
             ATC.log(string.format("REVEC %-10s @%s  OUTSIDE -> corner1(%s) hdg=%.0f",
                 unitName, abName, corners[1].name, hdg))
@@ -600,18 +601,15 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
         end
         return
     end
+    -- Inside control zone: only act when the plane reaches the next CRP corner.
+    -- No periodic re-vectors between corners.
     local target        = corners[cornerIdx]
     if not target then return end
     local dx            = target.pos.x - uPos.x
     local dz            = target.pos.z - uPos.z
     local distToCorner  = math.sqrt(dx * dx + dz * dz) / 1852
-    local hdgToCorner   = hdgTo(uPos, target.pos)
     if distToCorner < PATTERN_CORNER_NM then
         advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
-    elseif (now - lastT) > interval then
-        ATC.log(string.format("REVEC %-10s @%s  corner%d(%s) hdg=%.0f alt=%d dist=%.1fNM",
-            unitName, abName, cornerIdx, target.name, hdgToCorner, patAlt, distToCorner))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdgToCorner, now, abName, target.pos, target.name)
     end
 end
 function ATC.checkVectoring()

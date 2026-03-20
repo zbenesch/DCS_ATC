@@ -345,7 +345,12 @@ function ATC.onInboundRequest(arg)
         if vel then
             local currHdg = math.deg(math.atan2(vel.z, vel.x))
             if currHdg < 0 then currHdg = currHdg + 360 end
-            turnDir = angleDiff(currHdg, trueHdg) > 0 and "Turn RIGHT" or "Turn LEFT"
+            local diff = angleDiff(currHdg, trueHdg)
+            if math.abs(diff) > 45 then
+                turnDir = diff > 0 and "Turn RIGHT" or "Turn LEFT"
+            else
+                turnDir = "Fly"
+            end
         else
             turnDir = "Fly"
         end
