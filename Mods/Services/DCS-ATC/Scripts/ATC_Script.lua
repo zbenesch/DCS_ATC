@@ -3,6 +3,13 @@ ATC = ATC or {}
 local _runwaySnapshot = ATC.runways
 ATC.runways = ATC.runways or {}
 ATC = ATC or {}
+ATC._timersStarted = nil
+ATC._notificationShown = nil
+ATC._phraseDur = ATC._phraseDur or {}
+ATC._PSUBS = ATC._PSUBS or {}
+ATC._WSET = ATC._WSET or {}
+ATC._NATO = ATC._NATO or {}
+ATC._DWORDS = ATC._DWORDS or {}
 ATC.menuPaths = {}  -- [coalitionID] = { root, ground, tower, approach, departure }
 function ATC.ensureMenusForCoalition(coalitionID)
     if not coalitionID then return end
@@ -19,7 +26,7 @@ ATC.config = {
     finalNM         = 20,
     stallWarnKt     = 80,
     approachSpeeds = {
-        ["F-16C_50"]            = { clean=250, gear=210, final=160, maxFinal=200 },
+        ["F-16C_50"]            = { clean=250, gear=190, final=160, maxFinal=200 },
         ["FA-18C_hornet"]       = { clean=250, gear=200, final=140, maxFinal=180 },
         ["F-15C"]               = { clean=250, gear=220, final=155, maxFinal=200 },
         ["F-15E"]               = { clean=250, gear=220, final=155, maxFinal=200 },
@@ -66,7 +73,7 @@ ATC.config = {
     magvarSyria = 4,      -- Syria
     magvarDefault = 0,    -- Default fallback
 }
-ATC.state = ATC.state or {
+ATC.state = {
     aircraft  = {},   -- [unitName]    -> player record
     airfields = {},   -- [airbaseName] -> traffic record
 }
@@ -77,6 +84,7 @@ function ATC.getFieldState(airbaseName)
             departSeq  = {},
             rwyClear   = true,
             holdStack  = {},   -- [unitName] = assigned hold altitude (ft)
+            patternSlots = {}, -- [unitName] = assigned pattern altitude (ft)
         }
     end
     return ATC.state.airfields[airbaseName]
@@ -104,6 +112,7 @@ function ATC.getOrCreateRecord(unitName, groupId)
             holdPhase          = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             patternCornerIdx   = {}, -- [airbaseName] = 1..#corners, which CRP to fly to next
             patternAlt         = {}, -- [airbaseName] = current stack altitude in ft (MSL)
+            postLandingReady   = {}, -- [airbaseName] = true once landed and slowed for tower/ground handoff menu
             greeted            = {}, -- [airbaseName][controller] = true if greeted
         }
     end
@@ -134,16 +143,21 @@ local function getVoiceDuration(text, abName, controller)
     local tokens = ATC.textToTokens(text)
     local total = 0
     for _, token in ipairs(tokens) do
-        total = total + (ATC._phraseDur[voice .. "/" .. token] or 0.45) + 0.05 -- 50ms gap
+        local phraseDur = ATC._phraseDur and ATC._phraseDur[voice .. "/" .. token] or 0.45
+        total = total + phraseDur + 0.05 -- 50ms gap
     end
     return math.max(total, 2.0) -- never less than 2s
 end
 function ATC.msg(groupId, text, long, abName, controller)
-    local dur
+    local dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
     if abName and controller then
-        dur = getVoiceDuration(text, abName, controller)
-    else
-        dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
+        local ok, result = pcall(getVoiceDuration, text, abName, controller)
+        if ok then
+            dur = result
+        else
+            ATC.log(string.format("WARN  msg duration fallback for %s/%s: %s",
+                tostring(abName), tostring(controller), tostring(result)))
+        end
     end
     trigger.action.outTextForGroup(groupId, text, dur, false)
 end
@@ -234,6 +248,16 @@ function ATC.getBearing(a, b)
     if brg < 0 then brg = brg + 360 end
     return math.floor(brg + 0.5)
 end
+function ATC.getBearingText(a, b)
+    if not a or not b then return nil end
+    local bearing = ATC.getBearing(a, b)
+    local sectors = {
+        "north", "north-east", "east", "south-east",
+        "south", "south-west", "west", "north-west",
+    }
+    local index = (math.floor(((bearing + 22.5) % 360) / 45) % 8) + 1
+    return sectors[index], bearing
+end
 function ATC.getGSDeviationFt(unit, ab, gsAngle)
     if not unit or not ab then return nil end
     local uPos  = unit:getPoint()
@@ -312,8 +336,9 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
     _phraseSeqId = _phraseSeqId + 1
     local seqId = _phraseSeqId
     local t = startT
+    local phraseDur = ATC._phraseDur or {}
     for i, token in ipairs(tokens) do
-        local dur  = ATC._phraseDur[voice .. "/" .. token] or 0.45
+        local dur  = phraseDur[voice .. "/" .. token] or 0.45
         local name = string.format("ATC_%d_%d", seqId, i)
         local path = string.format("%s/%s.ogg", voice, token)
         local _pos, _f, _n, _p = abPos, freqHz, name, path
@@ -330,7 +355,7 @@ function ATC.textToTokens(text)
     text = text:lower()
     text = text:gsub("[\n\r]", " ")
     text = text:gsub("%-", " ")
-    for _, sub in ipairs(ATC._PSUBS) do
+    for _, sub in ipairs(ATC._PSUBS or {}) do
         text = text:gsub(sub[1], sub[2])
     end
     text = text:gsub("(%d+)%.%d+ nm", "%1 nm")          -- "3.5 nm" -> "3 nm"
@@ -347,18 +372,18 @@ function ATC.textToTokens(text)
             table.insert(tokens, chunk)
         elseif word:match("^%d+$") then
             for d in word:gmatch(".") do
-                local dw = ATC._DWORDS[tonumber(d)]
+                local dw = (ATC._DWORDS or {})[tonumber(d)]
                 if dw then table.insert(tokens, dw) end
             end
-        elseif ATC._WSET[word] then
+        elseif (ATC._WSET or {})[word] then
             table.insert(tokens, word)
         else
             for c in word:gmatch(".") do
-                local nato = ATC._NATO[c]
+                local nato = (ATC._NATO or {})[c]
                 if nato then
                     table.insert(tokens, nato)
                 elseif tonumber(c) then
-                    local dw = ATC._DWORDS[tonumber(c)]
+                    local dw = (ATC._DWORDS or {})[tonumber(c)]
                     if dw then table.insert(tokens, dw) end
                 end
             end
@@ -381,30 +406,58 @@ function ATC.getStationVoice(abName, role)
     for i = 1, #s do h = h + string.byte(s, i) end
     return _PHRASE_VOICES[(h % #_PHRASE_VOICES) + 1]
 end
+local _RADIO_GAP_SEC = 0.35
+local _radioBusyUntil = {}
+local function reserveRadioWindow(abName, controller, duration)
+    local now = timer.getTime() + 0.05
+    local key = string.format("%s|%s", abName or "ATC", (controller or "Approach"):lower())
+    local startT = math.max(now, _radioBusyUntil[key] or 0)
+    _radioBusyUntil[key] = startT + (duration or 2) + _RADIO_GAP_SEC
+    return startT
+end
 function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
     local dur = nil
     if abName and controller then
-        dur = getVoiceDuration(text, abName, controller)
+        local ok, result = pcall(getVoiceDuration, text, abName, controller)
+        if ok then
+            dur = result
+        else
+            ATC.log(string.format("WARN  radioMsg duration fallback for %s/%s: %s",
+                tostring(abName), tostring(controller), tostring(result)))
+        end
     end
     ATC.msg(groupId, text, long, abName, controller)
     if abPos and abName then
-        local rwy      = ATC.runways and ATC.runways[abName]
-        controller     = controller or "Approach"
-        local freqs    = rwy and rwy.frequencies
-        local ctrlKey  = controller:lower()
-        local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
-                         or (freqs and freqs.approach and freqs.approach.hz)
-                         or 251000000
-        local voice    = ATC.getStationVoice(abName, controller)
-        local tokens   = ATC.textToTokens(text)
-        ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice)
+        local ok, err = pcall(function()
+            local rwy      = ATC.runways and ATC.runways[abName]
+            controller     = controller or "Approach"
+            local freqs    = rwy and rwy.frequencies
+            local ctrlKey  = controller:lower()
+            local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
+                             or (freqs and freqs.approach and freqs.approach.hz)
+                             or 251000000
+            local voice    = ATC.getStationVoice(abName, controller)
+            local tokens   = ATC.textToTokens(text)
+            local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(text))
+            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
+        end)
+        if not ok then
+            ATC.log(string.format("WARN  radioMsg audio fallback for %s/%s: %s",
+                tostring(abName), tostring(controller), tostring(err)))
+        end
     end
 end
 function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller)
     local spoken = voiceText or text
     local dur = nil
     if abName and controller then
-        dur = getVoiceDuration(spoken, abName, controller)
+        local ok, result = pcall(getVoiceDuration, spoken, abName, controller)
+        if ok then
+            dur = result
+        else
+            ATC.log(string.format("WARN  radioMsgCustom duration fallback for %s/%s: %s",
+                tostring(abName), tostring(controller), tostring(result)))
+        end
     end
     if dur then
         trigger.action.outTextForGroup(groupId, text, dur, false)
@@ -412,16 +465,23 @@ function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, contr
         ATC.msg(groupId, text, long, abName, controller)
     end
     if abPos and abName then
-        local rwy      = ATC.runways and ATC.runways[abName]
-        controller     = controller or "Approach"
-        local freqs    = rwy and rwy.frequencies
-        local ctrlKey  = controller:lower()
-        local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
-                         or (freqs and freqs.approach and freqs.approach.hz)
-                         or 251000000
-        local voice    = ATC.getStationVoice(abName, controller)
-        local tokens   = ATC.textToTokens(spoken)
-        ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice)
+        local ok, err = pcall(function()
+            local rwy      = ATC.runways and ATC.runways[abName]
+            controller     = controller or "Approach"
+            local freqs    = rwy and rwy.frequencies
+            local ctrlKey  = controller:lower()
+            local freqHz   = (freqs and freqs[ctrlKey] and freqs[ctrlKey].hz)
+                             or (freqs and freqs.approach and freqs.approach.hz)
+                             or 251000000
+            local voice    = ATC.getStationVoice(abName, controller)
+            local tokens   = ATC.textToTokens(spoken)
+            local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
+            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT)
+        end)
+        if not ok then
+            ATC.log(string.format("WARN  radioMsgCustom audio fallback for %s/%s: %s",
+                tostring(abName), tostring(controller), tostring(err)))
+        end
     end
 end
 function ATC.roundHdg(h)
@@ -484,13 +544,9 @@ function ATC.getArrivalReport(unit, airbaseName, ab)
         report.text = "crosswind"
         report.traffic = "crosswind"
     elseif leg == "outbound" then
-        if distNM and distNM <= 10 then
-            report.text = "initial"
-            report.traffic = "initial"
-        else
-            report.text = "straight in"
-            report.traffic = "straight in"
-        end
+        report.text = "inbound for landing"
+        report.voice = "inbound for landing"
+        report.traffic = "inbound for landing"
     end
     return report
 end

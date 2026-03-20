@@ -5,5 +5,11 @@ ATC.runways["Anapa-Vityazevo"] = { hdg=40, reciprocal=220, elevation=144, ILSfre
         approach = { mhz=123.600, hz=123600000 },
         departure= { mhz=124.300, hz=124300000 }
     },
-    controllers = { ground=true, tower=true, approach=true, departure=true }
+    controllers = { ground=true, tower=true, approach=true, departure=true },
+    crps = {
+        { name="Anapa-Vityazevo West",  seq=1, lat=45.007332, lon=37.133420 },
+        { name="Anapa-Vityazevo North", seq=2, lat=45.064930, lon=37.237460 },
+        { name="Anapa-Vityazevo East",  seq=3, lat=45.025670, lon=37.295850 },
+        { name="Anapa-Vityazevo South", seq=4, lat=44.548390, lon=37.240900 },
+    }
 }

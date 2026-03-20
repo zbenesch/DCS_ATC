@@ -9,10 +9,10 @@ ATC.runways["Kobuleti"] = { hdg=70, reciprocal=250, elevation=59, ILSfreq=111.50
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {
-        { name="Black Sea", seq=1, lat=42.018767, lon=41.752067 },
-        { name="NE",        seq=2, lat=42.000733, lon=42.001550 },
-        { name="East",      seq=3, lat=41.909883, lon=42.007750 },
-        { name="South",     seq=4, lat=41.823583, lon=41.772667 },
+        { name="Kobuleti NW", seq=1, lat=42.018767, lon=41.752067 },
+        { name="Kobuleti NE", seq=2, lat=42.000733, lon=42.001550 },
+        { name="Kobuleti SE", seq=3, lat=41.909883, lon=42.007750 },
+        { name="Kobuleti SW", seq=4, lat=41.823583, lon=41.772667 },
     },
-    chart = "charts/Caucasus - Aerodrome Charts.pdf"
+    chart = "Charts/pages/page_14.png"
 }

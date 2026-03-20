@@ -4,7 +4,7 @@ local _runwaySnapshot = ATC.runways  -- watchdog snapshot for this chunk
 -- Constants used by pattern / glideslope logic in this chunk
 local ENTRY_BASE_AGL     = 3000   -- altitude AGL for entry / base leg
 local FINAL_AGL          = 1500   -- altitude AGL at the final approach point
-local PATTERN_CORNER_NM  = 1.5    -- within this NM of a CRP corner: advance to next
+local PATTERN_CORNER_NM  = 0.5    -- within this NM of a CRP corner: advance to next
 local PATTERN_FINAL_ALT  = 1500   -- ft; after full lap at this altitude -> turn final
 
 -- Helper functions shared with ATC_Script2 (duplicated here so this chunk is self-contained)
@@ -68,6 +68,10 @@ local function runVectoring(_, t)
     local ok, err = pcall(ATC.checkVectoring)
     if not ok then
         trigger.action.outText("[DCS-ATC] checkVectoring ERROR: " .. tostring(err), 30)
+    end
+    local okMenus, errMenus = pcall(ATC.refreshArrivalMenus)
+    if not okMenus then
+        trigger.action.outText("[DCS-ATC] refreshArrivalMenus ERROR: " .. tostring(errMenus), 30)
     end
     return t + 1
 end
@@ -297,19 +301,30 @@ function ATC.assignPatternSlot(unitName, abName)
     local fs   = ATC.getFieldState(abName)
     local rwy  = ATC.runways and ATC.runways[abName]
     local alts = (rwy and rwy.patternAlts) or { 4500, 3500, 2500, 1500 }
-    local taken = {}
-    for uName, alt in pairs(fs.patternSlots) do
-        if uName ~= unitName then taken[alt] = true end
-    end
-    for _, altFt in ipairs(alts) do
-        if not taken[altFt] then
-            fs.patternSlots[unitName] = altFt
-            return altFt
+    local floorAlt = alts[#alts] or PATTERN_FINAL_ALT
+    local topAlt   = alts[1] or (floorAlt + 3000)
+    fs.patternSlots = fs.patternSlots or {}
+    local highestOccupied = nil
+    for otherName, otherRec in pairs(ATC.state.aircraft) do
+        if otherName ~= unitName then
+            local otherAlt = nil
+            if otherRec.patternAlt and otherRec.patternAlt[abName] then
+                otherAlt = otherRec.patternAlt[abName]
+            else
+                local phase = ATC.getPhase(otherName, abName)
+                if (otherRec.landingCleared and otherRec.landingCleared[abName])
+                   or phase == "approach" or phase == "final" or phase == "landing" then
+                    otherAlt = floorAlt
+                end
+            end
+            if otherAlt then
+                highestOccupied = highestOccupied and math.max(highestOccupied, otherAlt) or otherAlt
+            end
         end
     end
-    local topAlt = alts[#alts] + 1000
-    fs.patternSlots[unitName] = topAlt
-    return topAlt
+    local slotAlt = highestOccupied and (highestOccupied + 1000) or topAlt
+    fs.patternSlots[unitName] = slotAlt
+    return slotAlt
 end
 function ATC.freePatternSlot(unitName, abName)
     local fs = ATC.state.airfields[abName]
@@ -318,7 +333,72 @@ end
 function ATC.freeStackLevel(unitName, abName)
     ATC.freePatternSlot(unitName, abName)
 end
-function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg, now, abName)
+local function getPatternFloorAlt(rwy)
+    local alts = rwy and rwy.patternAlts
+    if alts and #alts > 0 then return alts[#alts] end
+    return PATTERN_FINAL_ALT
+end
+
+local function getOccupiedPatternAlt(otherName, rec, abName, rwy)
+    if not rec then return nil end
+    if rec.patternAlt and rec.patternAlt[abName] then
+        return rec.patternAlt[abName]
+    end
+    local phase = ATC.getPhase(otherName, abName)
+    if (rec.landingCleared and rec.landingCleared[abName])
+       or phase == "approach" or phase == "final" or phase == "landing" then
+        return getPatternFloorAlt(rwy)
+    end
+    return nil
+end
+
+local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy)
+    local floorAlt = getPatternFloorAlt(rwy)
+    local highestBelow = nil
+    for otherName, otherRec in pairs(ATC.state.aircraft) do
+        if otherName ~= unitName then
+            local otherAlt = getOccupiedPatternAlt(otherName, otherRec, abName, rwy)
+            if otherAlt and otherAlt < currentAlt then
+                highestBelow = highestBelow and math.max(highestBelow, otherAlt) or otherAlt
+            end
+        end
+    end
+    if highestBelow then return highestBelow + 1000 end
+    return floorAlt
+end
+
+local function setPatternAltitude(unitName, rec, abName, altFt)
+    rec.patternAlt[abName] = altFt
+    local fs = ATC.getFieldState(abName)
+    fs.patternSlots = fs.patternSlots or {}
+    fs.patternSlots[unitName] = altFt
+end
+
+function ATC.refreshArrivalMenus()
+    for unitName, rec in pairs(ATC.state.aircraft) do
+        local abName = rec.engagedField
+        if abName then
+            local unit = Unit.getByName(unitName)
+            if unit and ATC.isPlayer(unit) then
+                local ph = ATC.getPhase(unitName, abName)
+                local arrivalActive = (ph == "inbound" or ph == "approach" or ph == "final"
+                    or ph == "goaround" or ph == "landing"
+                    or (rec.landingCleared and rec.landingCleared[abName])
+                    or (rec.seqNum and rec.seqNum[abName]))
+                if arrivalActive then
+                    if not rec.postLandingReady then rec.postLandingReady = {} end
+                    local landedSlow = (not unit:inAir()) and ((ATC.getSpeedKt(unit) or math.huge) <= 50)
+                    if rec.postLandingReady[abName] ~= landedSlow then
+                        rec.postLandingReady[abName] = landedSlow
+                        ATC.buildFullMenu(unitName)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg, now, abName, targetPos, reportPoint)
     local cs      = unit:getCallsign() or ""
     local altFt   = ATC.getAltFt(unit)
     local currSpd = ATC.getSpeedKt(unit)
@@ -339,7 +419,8 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         return
     end
     local uPos   = unit:getPoint()
-    local distNM = abPos and math.floor(ATC.mToNM(ATC.distVec3H(uPos, abPos)) + 0.5) or nil
+    local navPos = targetPos or abPos
+    local distNM = navPos and ATC.mToNM(ATC.distVec3H(uPos, navPos)) or nil
     local magHdg = ATC.roundHdg(ATC.toMag(targetHdg))
     local hdgPart
     if hdgDiff <= 10 then
@@ -350,7 +431,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         hdgPart = "turn LEFT heading " .. ATC.fmtHdg(magHdg)
     end
     if distNM then
-        hdgPart = hdgPart .. " for " .. distNM .. " NM"
+        hdgPart = hdgPart .. string.format(" for %.1f NM", distNM)
     end
     local altTol = math.max(50, math.floor(gate.altFt * 0.03))
     local altPart
@@ -362,9 +443,10 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         altPart = "climb to " .. gate.altFt .. " ft"
     end
     local ccPrefix = controllerCall(unitName, abName, "Approach")
+    local reportPart = reportPoint and (" Report at " .. reportPoint .. ".") or ""
     if gate.noSpeed then
         ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s%s, %s.", ccPrefix, hdgPart, altPart), true, abName, "Approach")
+            string.format("%s%s, %s.%s", ccPrefix, hdgPart, altPart, reportPart), true, abName, "Approach")
     else
         local spdTol = math.max(10, math.floor(gate.speedKt * 0.05))
         local spdPart
@@ -376,7 +458,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
             spdPart = "increase speed to " .. gate.speedKt .. " kt"
         end
         ATC.radioMsg(rec.groupId, abPos,
-            string.format("%s%s, %s, %s.", ccPrefix, hdgPart, altPart, spdPart), true, abName, "Approach")
+            string.format("%s%s, %s, %s.%s", ccPrefix, hdgPart, altPart, spdPart, reportPart), true, abName, "Approach")
     end
     rec.lastVector[abName] = now
 end
@@ -400,7 +482,7 @@ function ATC.initPatternEntry(unitName, airbaseName)
     local distNM = ATC.mToNM(ATC.distVec3H(uPos, abPos))
     local ctrlNm = rwy.ctrlZoneNm or 8
     local slotAlt = ATC.assignPatternSlot(unitName, airbaseName)
-    rec.patternAlt[airbaseName]      = slotAlt
+    setPatternAltitude(unitName, rec, airbaseName, slotAlt)
     rec.lastVector[airbaseName]      = timer.getTime()
     local gate = { altFt = slotAlt, noSpeed = true }
     if distNM > ctrlNm then
@@ -408,17 +490,89 @@ function ATC.initPatternEntry(unitName, airbaseName)
         local hdg = hdgTo(uPos, corners[1].pos)
         ATC.log(string.format("INIT  %-10s @%s  OUTSIDE(%.1fNM) -> corner1(%s) hdg=%.0f alt=%d",
             unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName)
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName, corners[1].pos, corners[1].name)
     else
-        local nearIdx = ATC.nearestCornerIdx(corners, uPos)
-        local nextIdx = (nearIdx % #corners) + 1
-        rec.patternCornerIdx[airbaseName] = nextIdx
-        local hdg = hdgTo(uPos, corners[nextIdx].pos)
-        ATC.log(string.format("INIT  %-10s @%s  INSIDE(%.1fNM) -> corner%d(%s) hdg=%.0f alt=%d",
-            unitName, airbaseName, distNM, nextIdx, corners[nextIdx].name, hdg, slotAlt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName)
+        rec.patternCornerIdx[airbaseName] = 1
+        local hdg = hdgTo(uPos, corners[1].pos)
+        ATC.log(string.format("INIT  %-10s @%s  INSIDE(%.1fNM) -> corner1(%s) hdg=%.0f alt=%d",
+            unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName, corners[1].pos, corners[1].name)
     end
 end
+local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
+    local patAlt    = rec.patternAlt[abName]
+    local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
+    local floorAlt  = getPatternFloorAlt(rwy)
+    local nextIdx = (cornerIdx % #corners) + 1
+    local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy)
+    local nextAlt = patAlt
+    local gate = { altFt = patAlt, noSpeed = true }
+    if patAlt > protectedAlt then
+        nextAlt = math.max(protectedAlt, patAlt - 1000)
+    end
+    if nextIdx == 1 then
+        if patAlt <= floorAlt and protectedAlt <= floorAlt then
+            local inboundHdg = ATC.toTrue(rwy.hdg) % 360
+            local elev       = rwy.elevation or 0
+            local finalGate  = { altFt = elev + 500, noSpeed = true }
+            ATC.log(string.format("FINAL %-10s @%s  -> final hdg=%.0f alt=%d",
+                unitName, abName, inboundHdg, finalGate.altFt))
+            ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName, abPos, nil)
+            rec.patternAlt[abName] = nil
+            rec.patternCornerIdx[abName] = nil
+            ATC.setPhase(unitName, abName, "approach")
+            if not rec.holdPhase then rec.holdPhase = {} end
+            rec.holdPhase[abName] = "pattern"
+            return true
+        end
+        if nextAlt ~= patAlt then
+            setPatternAltitude(unitName, rec, abName, nextAlt)
+            patAlt = nextAlt
+            gate.altFt = patAlt
+            ATC.log(string.format("LAP   %-10s @%s  lap complete, descend to %d ft",
+                unitName, abName, patAlt))
+        end
+    elseif nextAlt ~= patAlt then
+        setPatternAltitude(unitName, rec, abName, nextAlt)
+        patAlt = nextAlt
+        gate.altFt = patAlt
+        ATC.log(string.format("STEP  %-10s @%s  descend on pattern to %d ft",
+            unitName, abName, patAlt))
+    end
+    rec.patternCornerIdx[abName] = nextIdx
+    local uPos      = unit:getPoint()
+    local newTarget = corners[nextIdx]
+    local newHdg    = hdgTo(uPos, newTarget.pos)
+    ATC.log(string.format("TURN  %-10s @%s  -> corner%d(%s) hdg=%.0f alt=%d",
+        unitName, abName, nextIdx, newTarget.name, newHdg, patAlt))
+    ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, newHdg, now, abName, newTarget.pos, newTarget.name)
+    return true
+end
+
+function ATC.handlePatternReport(unitName, abName)
+    local rec  = ATC.state.aircraft[unitName]
+    local unit = Unit.getByName(unitName)
+    local ab   = Airbase.getByName(abName)
+    local rwy  = ATC.getRunway(abName)
+    if not rec or not unit or not ab or not rwy then return false end
+    if not (rec.patternAlt and rec.patternAlt[abName]) then return false end
+    local corners = ATC.getPatternCorners(rwy)
+    if not corners then return false end
+    local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
+    local target = corners[cornerIdx]
+    if not target then return false end
+    local uPos = unit:getPoint()
+    local dx = target.pos.x - uPos.x
+    local dz = target.pos.z - uPos.z
+    local distToCorner = math.sqrt(dx * dx + dz * dz) / 1852
+    local reportTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    if distToCorner > reportTolerance then return false end
+    local abPos = ATC.getAirbasePos(ab)
+    ATC.log(string.format("RPTCRP %-10s @%s  corner=%d(%s) dist=%.1fNM -> advance",
+        unitName, abName, cornerIdx, target.name, distToCorner))
+    return advancePatternCorner(unitName, rec, unit, abName, timer.getTime(), rwy, corners, abPos)
+end
+
 local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local ab  = Airbase.getByName(abName)
     local rwy = ATC.getRunway(abName)
@@ -433,6 +587,7 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local lastT     = rec.lastVector[abName] or 0
     local interval  = ATC.config.vectoringInterval or 25
     local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
+    local floorAlt  = getPatternFloorAlt(rwy)
     ATC.log(string.format("CVEC  %-10s @%s  ph=%s  dist=%.1fNM  alt=%d  corner=%d",
         unitName, abName, ATC.getPhase(unitName, abName), distNM, patAlt, cornerIdx))
     local gate = { altFt = patAlt, noSpeed = true }
@@ -441,7 +596,7 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
             local hdg = hdgTo(uPos, corners[1].pos)
             ATC.log(string.format("REVEC %-10s @%s  OUTSIDE -> corner1(%s) hdg=%.0f",
                 unitName, abName, corners[1].name, hdg))
-            ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, now, abName)
+            ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, now, abName, corners[1].pos, corners[1].name)
         end
         return
     end
@@ -452,39 +607,11 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local distToCorner  = math.sqrt(dx * dx + dz * dz) / 1852
     local hdgToCorner   = hdgTo(uPos, target.pos)
     if distToCorner < PATTERN_CORNER_NM then
-        local nextIdx = (cornerIdx % #corners) + 1
-        if nextIdx == 1 then
-            local newAlt = patAlt - 1000
-            if newAlt < PATTERN_FINAL_ALT then
-                local inboundHdg = ATC.toTrue(rwy.hdg) % 360
-                local elev       = rwy.elevation or 0
-                local finalGate  = { altFt = elev + 500, noSpeed = true }
-                ATC.log(string.format("FINAL %-10s @%s  -> final hdg=%.0f alt=%d",
-                    unitName, abName, inboundHdg, finalGate.altFt))
-                ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName)
-                rec.patternAlt[abName]      = nil
-                rec.patternCornerIdx[abName] = nil
-                ATC.setPhase(unitName, abName, "approach")
-                if not rec.holdPhase then rec.holdPhase = {} end
-                rec.holdPhase[abName] = "pattern"
-                return
-            end
-            rec.patternAlt[abName] = newAlt
-            patAlt = newAlt
-            gate.altFt = patAlt
-            ATC.log(string.format("LAP   %-10s @%s  lap complete, descend to %d ft",
-                unitName, abName, patAlt))
-        end
-        rec.patternCornerIdx[abName] = nextIdx
-        local newTarget = corners[nextIdx]
-        local newHdg    = hdgTo(uPos, newTarget.pos)
-        ATC.log(string.format("TURN  %-10s @%s  -> corner%d(%s) hdg=%.0f alt=%d",
-            unitName, abName, nextIdx, newTarget.name, newHdg, patAlt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, newHdg, now, abName)
+        advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
     elseif (now - lastT) > interval then
         ATC.log(string.format("REVEC %-10s @%s  corner%d(%s) hdg=%.0f alt=%d dist=%.1fNM",
             unitName, abName, cornerIdx, target.name, hdgToCorner, patAlt, distToCorner))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdgToCorner, now, abName)
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdgToCorner, now, abName, target.pos, target.name)
     end
 end
 function ATC.checkVectoring()

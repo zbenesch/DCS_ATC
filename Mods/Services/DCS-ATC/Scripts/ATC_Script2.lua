@@ -1,4 +1,24 @@
 ATC = ATC or {}
+local function formatControllerFreq(rwy, controllerName)
+    local key = controllerName and string.lower(controllerName) or nil
+    local freq = key and rwy and rwy.frequencies and rwy.frequencies[key]
+    if freq and freq.mhz then
+        return string.format("%s %.3f MHz", controllerName, freq.mhz)
+    end
+    return controllerName
+end
+
+local function isArrivalEngaged(rec, airbaseName, phase)
+    if not rec or rec.engagedField ~= airbaseName then return false end
+    if phase == "inbound" or phase == "approach" or phase == "final"
+       or phase == "goaround" or phase == "landing" then
+        return true
+    end
+    if rec.seqNum and rec.seqNum[airbaseName] then return true end
+    if rec.landingCleared and rec.landingCleared[airbaseName] then return true end
+    return false
+end
+
 function ATC.clearFieldMenu(unitName, airbaseName)
     local rec = ATC.state.aircraft[unitName]
     if not rec then return end
@@ -23,13 +43,32 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
     local arg = { unitName = unitName, airbaseName = abName }
     local unit   = Unit.getByName(unitName)
     local inAir  = unit and unit:inAir() or false
+    local spdKt  = unit and ATC.getSpeedKt(unit) or nil
     local ph     = ATC.getPhase(unitName, abName)
     local onRwy  = (ph == "landing")
-    if onRwy then
+    local arrivalEngaged = isArrivalEngaged(rec, abName, ph)
+    local postLandingReady = rec.postLandingReady and rec.postLandingReady[abName]
+    if postLandingReady and not inAir and spdKt and spdKt <= 50 then
+        missionCommands.addCommandForGroup(gid, formatControllerFreq(rwy, "Tower"),
+            fieldMenu, function(a) ATC.onTowerContact(a) end, arg)
+        missionCommands.addCommandForGroup(gid, formatControllerFreq(rwy, "Ground"),
+            fieldMenu, function(a) ATC.onVacatingRunway(a) end, arg)
+        missionCommands.addCommandForGroup(gid, "Declare Emergency",
+            fieldMenu, function(a) ATC.onEmergency(a) end, arg)
+    elseif onRwy then
         missionCommands.addCommandForGroup(gid, "Vacating Runway",
             fieldMenu, function(a) ATC.onVacatingRunway(a) end, arg)
         missionCommands.addCommandForGroup(gid, "Acknowledge / Wilco",
             fieldMenu, function(a) ATC.onWilco(a) end, arg)
+        missionCommands.addCommandForGroup(gid, "Declare Emergency",
+            fieldMenu, function(a) ATC.onEmergency(a) end, arg)
+    elseif arrivalEngaged then
+        missionCommands.addCommandForGroup(gid, "Report Position",
+            fieldMenu, function(a) ATC.onPositionReport(a) end, arg)
+        missionCommands.addCommandForGroup(gid, "Acknowledge / Wilco",
+            fieldMenu, function(a) ATC.onWilco(a) end, arg)
+        missionCommands.addCommandForGroup(gid, "Request Go-Around",
+            fieldMenu, function(a) ATC.onGoAround(a) end, arg)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     elseif not inAir then
@@ -81,9 +120,14 @@ function ATC.buildFullMenu(unitName)
             local distM  = (abPos and uPos) and ATC.distVec3H(uPos, abPos) or 0
             local fe = { ab = ab, distM = distM, name = rec.engagedField }
             ATC.buildFieldMenu(unitName, fe)
-            missionCommands.addCommandForGroup(rec.groupId,
-                "Cancel Request with " .. rec.engagedField,
-                root, ATC.onCancelRequest, { unitName = unitName, airbaseName = rec.engagedField })
+            local ph = ATC.getPhase(unitName, rec.engagedField)
+            local arrivalEngaged = isArrivalEngaged(rec, rec.engagedField, ph)
+            local postLandingReady = rec.postLandingReady and rec.postLandingReady[rec.engagedField]
+            if not postLandingReady or not arrivalEngaged then
+                missionCommands.addCommandForGroup(rec.groupId,
+                    "Cancel Request with " .. rec.engagedField,
+                    root, ATC.onCancelRequest, { unitName = unitName, airbaseName = rec.engagedField })
+            end
         else
             rec.engagedField = nil
             ATC.buildFullMenu(unitName)
@@ -147,6 +191,7 @@ function ATC.clearEngagement(unitName)
         if rec.landingCleared then rec.landingCleared[field]  = nil end
         if rec.patternAdv     then rec.patternAdv[field]     = nil end
         if rec.holdPhase      then rec.holdPhase[field]      = nil end
+        if rec.postLandingReady then rec.postLandingReady[field] = nil end
     end
     ATC.buildFullMenu(unitName)
 end
@@ -228,17 +273,25 @@ function ATC.onInboundRequest(arg)
     local altFt  = ATC.getAltFt(unit)
     local seqN   = ATC.addToLandingSeq(unitName, airbaseName)
     rec.seqNum[airbaseName] = seqN
+    if rec.postLandingReady then rec.postLandingReady[airbaseName] = nil end
+    ATC.setEngagedField(unitName, airbaseName)
     local distStr = distNM and string.format("%.1f NM", distNM) or "position unknown"
     local altStr  = altFt  and string.format("%d ft",   altFt)  or "altitude unknown"
     rec.greeted[airbaseName] = rec.greeted[airbaseName] or {}
     local greeting = ""
     if not rec.greeted[airbaseName]["Approach"] then
-        greeting = ATC.getDaytimeGreeting() .. ", " .. cs .. ". " .. airbaseName .. " Approach.\n"
+        greeting = ATC.getDaytimeGreeting() .. ", " .. cs .. ", " .. airbaseName .. " Approach.\n"
         rec.greeted[airbaseName]["Approach"] = true
+    else
+        greeting = cs .. ", " .. airbaseName .. " Approach.\n"
     end
     local firstVectorLine = ""
+    local firstVectorVoice = ""
     local rwy     = ATC.getRunway(airbaseName)
     local corners = rwy and ATC.getPatternCorners(rwy)
+    local abPos = ATC.getAirbasePos(ab)
+    local uPos = unit:getPoint()
+    local bearingText = (abPos and uPos and ATC.getBearingText(abPos, uPos)) or nil
     do
         local rwType = type(ATC.runways)
         local rwCount = (rwType == "table") and (function() local n=0; for _ in pairs(ATC.runways) do n=n+1 end; return n end)() or 0
@@ -251,7 +304,6 @@ function ATC.onInboundRequest(arg)
             distStr))
     end
     if corners then
-        local uPos    = unit:getPoint()
         local ctrlNm  = rwy.ctrlZoneNm or 8
         local slotAlt = ATC.assignPatternSlot(unitName, airbaseName)
         rec.patternAlt[airbaseName]       = slotAlt
@@ -261,13 +313,13 @@ function ATC.onInboundRequest(arg)
             targetIdx    = 1
             targetCorner = corners[1]
         else
-            local nearIdx = ATC.nearestCornerIdx(corners, uPos)
-            targetIdx     = (nearIdx % #corners) + 1
-            targetCorner  = corners[targetIdx]
+            targetIdx     = 1
+            targetCorner  = corners[1]
         end
         rec.patternCornerIdx[airbaseName] = targetIdx
         local trueHdg = hdgTo(uPos, targetCorner.pos)
         local magHdg  = ATC.roundHdg(ATC.toMag(trueHdg))
+        local legDistNm = ATC.mToNM(ATC.distVec3H(uPos, targetCorner.pos))
         local turnDir
         local vel = unit:getVelocity()
         if vel then
@@ -278,54 +330,65 @@ function ATC.onInboundRequest(arg)
             turnDir = "Fly"
         end
         firstVectorLine = string.format(
-            "\n%s heading %s, %s %d ft.  Report at %s.",
+            "\n%s heading %s for %.1f NM, %s %d ft. Report at %s.",
             turnDir, ATC.fmtHdg(magHdg),
+            legDistNm,
+            (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
+            slotAlt, targetCorner.name)
+        firstVectorVoice = string.format(
+            "\n%s heading %s for %.1f NM, %s %d ft. Report at %s.",
+            turnDir, ATC.fmtHdg(magHdg),
+            legDistNm,
             (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
             slotAlt, targetCorner.name)
         ATC.log(string.format("INBD  %-10s @%s  corner=%d(%s) trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
             unitName, airbaseName, targetIdx, targetCorner.name, trueHdg, magHdg, slotAlt, firstVectorLine))
     end
-    local response
-    if seqN == 1 then
-        response = string.format(
-            "%s"
-            .. "Radar contact.  %s out at %s.\n"
-            .. "Number 1 for landing.%s",
-            greeting, distStr, altStr, firstVectorLine)
-        ATC.setPhase(unitName, airbaseName, "inbound")
-    else
-        local aheadName = fs.landingSeq[seqN - 1]
-        local aheadUnit = aheadName and Unit.getByName(aheadName)
-        local aheadCs   = (aheadUnit and aheadUnit:getCallsign()) or "preceding traffic"
-        response = string.format(
-            "%s"
-            .. "Radar contact.  %s out at %s.\n"
-            .. "Number %s for landing.  Follow %s.%s",
-            greeting, distStr, altStr, ATC.sequenceNumber(seqN), aheadCs, firstVectorLine)
-        ATC.setPhase(unitName, airbaseName, "inbound")
-    end
-    ATC.setEngagedField(unitName, airbaseName)
-    local abPos = ATC.getAirbasePos(ab)
-    local arrivalReport = ATC.getArrivalReport(unit, airbaseName, ab)
+    local response = string.format(
+        "%s"
+        .. "Radar contact. You are %s %s of %s.\n"
+        .. "You are number %s for landing.%s",
+        greeting,
+        distStr,
+        bearingText or "out",
+        airbaseName,
+        ATC.sequenceNumber(seqN),
+        firstVectorLine)
+    local responseVoice = string.format(
+        "%s"
+        .. "Radar contact. %s out at %s.\n"
+        .. "You are number %s for landing.%s",
+        greeting,
+        distStr,
+        altStr,
+        ATC.sequenceNumber(seqN),
+        firstVectorVoice)
+    ATC.setPhase(unitName, airbaseName, "inbound")
     local initialCallText = string.format(
-        "%s traffic, %s %s.\n%s at %s.",
-        airbaseName, cs, arrivalReport.text, distStr, altStr)
+        "%s traffic, %s inbound for landing.\n%s at %s.",
+        airbaseName, cs, distStr, altStr)
     local initialCallVoice = string.format(
-        "%s traffic, %s %s.\n%s at %s.",
-        airbaseName, cs, arrivalReport.voice, distStr, altStr)
+        "%s traffic, %s inbound for landing.\n%s at %s.",
+        airbaseName, cs, distStr, altStr)
     ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach")
     local introDur = math.max(ATC.ttsDuration(initialCallVoice), 3)
     local t1       = timer.getTime() + introDur + 1.5
-    local respDur  = ATC.ttsDuration(response)
+    local respDur  = ATC.ttsDuration(responseVoice)
     timer.scheduleFunction(function(p)
         local r  = ATC.state.aircraft[p.unitName]
         local u2 = Unit.getByName(p.unitName)
         if not r or not u2 then return nil end
         local ab2  = Airbase.getByName(p.airbaseName)
         local pos2 = ab2 and ATC.getAirbasePos(ab2) or p.abPos
-        ATC.radioMsg(r.groupId, pos2, p.response, false, p.airbaseName, "Approach")
+        ATC.radioMsgCustom(r.groupId, pos2, p.responseText, p.responseVoice, false, p.airbaseName, "Approach")
         return nil
-    end, { unitName=unitName, airbaseName=airbaseName, response=response, abPos=abPos }, t1)
+    end, {
+        unitName=unitName,
+        airbaseName=airbaseName,
+        responseText=response,
+        responseVoice=responseVoice,
+        abPos=abPos,
+    }, t1)
     timer.scheduleFunction(function(p)
         local ok, err = pcall(function()
             local r = ATC.state.aircraft[p.unitName]
@@ -351,6 +414,20 @@ function ATC.onInboundRequest(arg)
         return nil
     end, { airbaseName=airbaseName }, t1 + respDur + 6)
 end
+function ATC.onTowerContact(arg)
+    local unitName    = arg.unitName
+    local airbaseName = arg.airbaseName
+    local rec  = ATC.state.aircraft[unitName]
+    if not rec then return end
+    local unit = Unit.getByName(unitName)
+    if not ATC.isPlayer(unit) then return end
+    local rwy = ATC.getRunway(airbaseName)
+    local freqLabel = formatControllerFreq(rwy, "Tower")
+    ATC.msg(rec.groupId, string.format(
+        "%s\nMonitor %s.",
+        preamble(unitName, airbaseName, "Tower"), freqLabel))
+end
+
 function ATC.onTaxiRequest(arg)
     local unitName    = arg.unitName
     local unit = Unit.getByName(unitName)
@@ -446,6 +523,9 @@ function ATC.onPositionReport(arg)
     if not rec then return end
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
+    if ATC.handlePatternReport and ATC.handlePatternReport(unitName, airbaseName) then
+        return
+    end
     local cs     = unit:getCallsign() or ""
     local ab     = Airbase.getByName(airbaseName)
     local distNM = ATC.distUnitToBase(unit, ab)
@@ -502,6 +582,7 @@ function ATC.onGoAround(arg)
     if rec.stackAlt        then rec.stackAlt[airbaseName]        = nil end
     if rec.patternAdv      then rec.patternAdv[airbaseName]      = nil end
     if rec.holdPhase       then rec.holdPhase[airbaseName]       = nil end
+    if rec.postLandingReady then rec.postLandingReady[airbaseName] = nil end
     ATC.freeStackLevel(unitName, airbaseName)
     fs.rwyClear = true
     ATC.checkAndClearNext(airbaseName)
@@ -531,6 +612,7 @@ function ATC.onVacatingRunway(arg)
     if rec.landingCleared then rec.landingCleared[airbaseName] = nil end
     if rec.patternAdv then rec.patternAdv[airbaseName] = nil end
     if rec.holdPhase  then rec.holdPhase[airbaseName]  = nil end
+    if rec.postLandingReady then rec.postLandingReady[airbaseName] = nil end
     ATC.freeStackLevel(unitName, airbaseName)
     ATC.setPhase(unitName, airbaseName, "parked")
     ATC.clearEngagement(unitName)
