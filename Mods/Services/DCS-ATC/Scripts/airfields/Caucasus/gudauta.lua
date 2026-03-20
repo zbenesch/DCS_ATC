@@ -1,9 +1,9 @@
 ﻿ATC.runways["Gudauta"] = { hdg=150, reciprocal=330, elevation=68, ILSfreq=0, patternAlt=1568,
     frequencies = {
-        ground   = { mhz=121.900, hz=121900002 },
-        tower    = { mhz=118.900, hz=118900002 },
-        approach = { mhz=123.600, hz=123599998 },
-        departure= { mhz=124.400, hz=124400002 }
+        ground   = { mhz=121.900, hz=121900000 },
+        tower    = { mhz=118.900, hz=118900000 },
+        approach = { mhz=123.600, hz=123600000 },
+        departure= { mhz=124.400, hz=124400000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     chart = "charts/Caucasus - Aerodrome Charts.pdf",

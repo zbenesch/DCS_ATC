@@ -1,9 +1,9 @@
 ﻿ATC.runways["Tbilisi-Lochini"] = { hdg=130, reciprocal=310, elevation=1624, ILSfreq=110.30, patternAlt=3124,
     frequencies = {
-        ground   = { mhz=121.600, hz=121599998 },
-        tower    = { mhz=120.400, hz=120400002 },
-        approach = { mhz=123.300, hz=123300003 },
-        departure= { mhz=124.400, hz=124400002 }
+        ground   = { mhz=121.600, hz=121600000 },
+        tower    = { mhz=120.400, hz=120400000 },
+        approach = { mhz=123.300, hz=123300000 },
+        departure= { mhz=124.400, hz=124400000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

@@ -1,9 +1,9 @@
 ﻿ATC.runways["Krymsk"] = { hdg=40, reciprocal=220, elevation=65, ILSfreq=0, patternAlt=1565,
     frequencies = {
-        ground   = { mhz=121.700, hz=121699997 },
-        tower    = { mhz=119.300, hz=119300003 },
-        approach = { mhz=123.400, hz=123400002 },
-        departure= { mhz=124.300, hz=124300003 }
+        ground   = { mhz=121.700, hz=121700000 },
+        tower    = { mhz=119.300, hz=119300000 },
+        approach = { mhz=123.400, hz=123400000 },
+        departure= { mhz=124.300, hz=124300000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

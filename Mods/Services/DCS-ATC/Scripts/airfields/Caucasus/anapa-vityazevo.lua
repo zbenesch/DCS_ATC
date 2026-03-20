@@ -2,7 +2,7 @@
     frequencies = {
         ground   = { mhz=121.500, hz=121500000 },
         tower    = { mhz=118.500, hz=118500000 },
-        approach = { mhz=123.200, hz=123199997 },
+        approach = { mhz=123.200, hz=123200000 },
         departure= { mhz=124.000, hz=124000000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },

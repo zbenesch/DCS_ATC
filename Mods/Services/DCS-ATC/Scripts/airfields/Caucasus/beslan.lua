@@ -1,9 +1,9 @@
 ﻿ATC.runways["Beslan"] = { hdg=100, reciprocal=280, elevation=1660, ILSfreq=110.50, patternAlt=3160,
     frequencies = {
-        ground   = { mhz=121.700, hz=121699997 },
-        tower    = { mhz=118.700, hz=118699997 },
-        approach = { mhz=123.400, hz=123400002 },
-        departure= { mhz=124.200, hz=124199997 }
+        ground   = { mhz=121.700, hz=121700000 },
+        tower    = { mhz=118.700, hz=118700000 },
+        approach = { mhz=123.400, hz=123400000 },
+        departure= { mhz=124.200, hz=124200000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

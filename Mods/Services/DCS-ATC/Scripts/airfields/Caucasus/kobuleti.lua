@@ -4,8 +4,8 @@
     frequencies = {
         ground   = { mhz=122.000, hz=122000000 },
         tower    = { mhz=119.000, hz=119000000 },
-        approach = { mhz=123.700, hz=123699997 },
-        departure= { mhz=124.200, hz=124199997 }
+        approach = { mhz=123.700, hz=123700000 },
+        departure= { mhz=124.200, hz=124200000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

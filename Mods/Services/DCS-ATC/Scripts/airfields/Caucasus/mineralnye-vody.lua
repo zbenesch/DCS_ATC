@@ -1,9 +1,9 @@
 ﻿ATC.runways["Mineralnye Vody"] = { hdg=120, reciprocal=300, elevation=1049, ILSfreq=111.10, patternAlt=2549,
     frequencies = {
         ground   = { mhz=122.000, hz=122000000 },
-        tower    = { mhz=119.600, hz=119599998 },
-        approach = { mhz=123.700, hz=123699997 },
-        departure= { mhz=124.100, hz=124099998 }
+        tower    = { mhz=119.600, hz=119600000 },
+        approach = { mhz=123.700, hz=123700000 },
+        departure= { mhz=124.100, hz=124100000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

@@ -1,9 +1,9 @@
 ﻿ATC.runways["Nalchik"] = { hdg=90, reciprocal=270, elevation=1410, ILSfreq=117.60, patternAlt=2910,
     frequencies = {
-        ground   = { mhz=121.600, hz=121599998 },
-        tower    = { mhz=119.800, hz=119800003 },
-        approach = { mhz=123.300, hz=123300003 },
-        departure= { mhz=124.300, hz=124300003 }
+        ground   = { mhz=121.600, hz=121600000 },
+        tower    = { mhz=119.800, hz=119800000 },
+        approach = { mhz=123.300, hz=123300000 },
+        departure= { mhz=124.300, hz=124300000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

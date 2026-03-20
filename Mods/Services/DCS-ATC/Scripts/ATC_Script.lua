@@ -70,11 +70,35 @@ ATC.config = {
     vectoringInterval = 25,
     ilsHandoffNM = 8,
     defaultPatternAltFt = 1500,
+    voiceDebug = false,
+    voiceDebugToGroup = true,
     magvarCaucasus = 6,   -- Caucasus / Black Sea
     magvarPG = 2,         -- Persian Gulf
     magvarSyria = 4,      -- Syria
     magvarDefault = 0,    -- Default fallback
 }
+
+function ATC.voiceDebug(groupId, msg)
+    if not (ATC and ATC.config and ATC.config.voiceDebug) then return end
+    local line = "VOICE " .. tostring(msg)
+    ATC.log(line)
+    if ATC.config.voiceDebugToGroup and groupId then
+        trigger.action.outTextForGroup(groupId, "[ATC DEBUG] " .. tostring(msg), 8, false)
+    end
+end
+
+local function fmtRadioList(radios)
+    local parts = {}
+    if not radios then return "none" end
+    for idx = 1, 4 do
+        local f = radios[idx]
+        if f then
+            parts[#parts + 1] = string.format("R%d=%.3f", idx, f)
+        end
+    end
+    if #parts == 0 then return "none" end
+    return table.concat(parts, ", ")
+end
 ATC.state = {
     aircraft  = {},   -- [unitName]    -> player record
     airfields = {},   -- [airbaseName] -> traffic record
@@ -378,17 +402,32 @@ function ATC.isOnFrequency(unitName, airbaseName, controller)
     -- Returns true if on correct freq, false otherwise
     if not unitName or not airbaseName or not controller then return false end
     
+    local rec = ATC.state.aircraft and ATC.state.aircraft[unitName]
+    local groupId = rec and rec.groupId or nil
     local rwy = ATC.getRunway(airbaseName)
     if not rwy or not rwy.frequencies or not rwy.frequencies[controller] then
+        ATC.voiceDebug(groupId, string.format(
+            "%s %s missing runway frequency data",
+            tostring(airbaseName), tostring(controller)))
         return false  -- No frequency defined for this controller
     end
     
     local requiredFreqMhz = rwy.frequencies[controller].mhz
-    if not requiredFreqMhz then return false end
+    if not requiredFreqMhz then
+        ATC.voiceDebug(groupId, string.format(
+            "%s %s has nil required mhz",
+            tostring(airbaseName), tostring(controller)))
+        return false
+    end
     
     -- Get current radio frequencies from telemetry
     local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
-    if not telem or not telem.radios then return false end
+    if not telem or not telem.radios then
+        ATC.voiceDebug(groupId, string.format(
+            "%s radios unavailable for %s (required %.3f)",
+            tostring(unitName), tostring(controller), requiredFreqMhz))
+        return false
+    end
     
     -- Check if ANY of the 4 radios is tuned to the correct frequency
     -- Allow 0.05 MHz tolerance for floating point
@@ -396,9 +435,16 @@ function ATC.isOnFrequency(unitName, airbaseName, controller)
     for radioIdx = 1, 4 do
         local currentFreqMhz = telem.radios[radioIdx]
         if currentFreqMhz and math.abs(currentFreqMhz - requiredFreqMhz) < tolerance then
+            ATC.voiceDebug(groupId, string.format(
+                "%s %s OK required=%.3f tuned=%.3f radios=[%s]",
+                tostring(unitName), tostring(controller), requiredFreqMhz, currentFreqMhz, fmtRadioList(telem.radios)))
             return true
         end
     end
+
+    ATC.voiceDebug(groupId, string.format(
+        "%s %s FAIL required=%.3f radios=[%s]",
+        tostring(unitName), tostring(controller), requiredFreqMhz, fmtRadioList(telem.radios)))
     
     return false
 end
@@ -469,12 +515,18 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modul
     power = power or ATC.config.radioTxPower or 1000
     _phraseSeqId = _phraseSeqId + 1
     local seqId = _phraseSeqId
+    ATC.voiceDebug(groupId, string.format(
+        "TX seq=%d voice=%s freqHz=%s modulation=%s power=%s tokens=%d",
+        seqId, tostring(voice), tostring(freqHz), tostring(modulation), tostring(power), #tokens))
     local t = startT
     local phraseDur = ATC._phraseDur or {}
     for i, token in ipairs(tokens) do
         local dur  = phraseDur[voice .. "/" .. token] or 0.45
         local name = string.format("ATC_%d_%d", seqId, i)
         local path = getPhraseAudioPath(voice, token)
+        ATC.voiceDebug(groupId, string.format(
+            "TX seq=%d token=%d/%d %s path=%s start=%.2f dur=%.2f",
+            seqId, i, #tokens, tostring(token), tostring(path), t, dur))
         local _pos, _f, _n, _p, _m, _w = abPos, freqHz, name, path, modulation, power
         timer.scheduleFunction(function()
             trigger.action.radioTransmission(_p, _pos, _m, false, _f, _w, _n)
@@ -568,6 +620,9 @@ function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
             local voice    = ATC.getStationVoice(abName, controller)
             local tokens   = ATC.textToTokens(text)
             local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(text))
+            ATC.voiceDebug(groupId, string.format(
+                "radioMsg %s/%s voice=%s freqHz=%s text='%s'",
+                tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text)))
             ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
         end)
         if not ok then
@@ -600,6 +655,9 @@ function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, contr
             local voice    = ATC.getStationVoice(abName, controller)
             local tokens   = ATC.textToTokens(spoken)
             local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
+            ATC.voiceDebug(groupId, string.format(
+                "radioMsgCustom %s/%s voice=%s freqHz=%s text='%s' spoken='%s'",
+                tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text), tostring(spoken)))
             ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
         end)
         if not ok then

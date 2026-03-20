@@ -1,6 +1,6 @@
 ﻿ATC.runways["Senaki-Kolkhi"] = { hdg=90, reciprocal=270, elevation=43, ILSfreq=108.90, patternAlt=1543,
     frequencies = {
-        ground   = { mhz=121.800, hz=121800003 },
+        ground   = { mhz=121.800, hz=121800000 },
         tower    = { mhz=120.000, hz=120000000 },
         approach = { mhz=123.500, hz=123500000 },
         departure= { mhz=124.000, hz=124000000 }

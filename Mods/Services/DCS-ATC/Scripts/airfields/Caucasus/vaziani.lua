@@ -1,8 +1,8 @@
 ﻿ATC.runways["Vaziani"] = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=117.60, patternAlt=3023,
     frequencies = {
-        ground   = { mhz=121.700, hz=121699997 },
+        ground   = { mhz=121.700, hz=121700000 },
         tower    = { mhz=120.500, hz=120500000 },
-        approach = { mhz=123.400, hz=123400002 },
+        approach = { mhz=123.400, hz=123400000 },
         departure= { mhz=124.000, hz=124000000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },

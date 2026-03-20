@@ -8,6 +8,68 @@ local function formatControllerFreq(rwy, controllerName)
     return controllerName
 end
 
+local function addFrequencyInfoCommands(gid, menuPath, rwy)
+    if not gid or not menuPath or not rwy then return end
+    local order = { "Tower", "Approach", "Ground", "Departure" }
+    for _, controllerName in ipairs(order) do
+        local key = string.lower(controllerName)
+        local enabled = rwy.controllers and rwy.controllers[key]
+        local freq = rwy.frequencies and rwy.frequencies[key]
+        if enabled and freq and freq.mhz then
+            missionCommands.addCommandForGroup(
+                gid,
+                string.format("[Freq] %s %.3f MHz", controllerName, freq.mhz),
+                menuPath,
+                function() end,
+                nil
+            )
+        end
+    end
+end
+
+function ATC.onToggleVoiceDebug(arg)
+    local unitName = arg and arg.unitName
+    local rec = unitName and ATC.state.aircraft[unitName]
+    if not rec then return end
+    ATC.config.voiceDebug = not ATC.config.voiceDebug
+    local state = ATC.config.voiceDebug and "ON" or "OFF"
+    ATC.msg(rec.groupId, "[ATC] Voice debug " .. state .. ".")
+    ATC.buildFullMenu(unitName)
+end
+
+function ATC.onVoiceDebugCheck(arg)
+    local unitName = arg and arg.unitName
+    local airbaseName = arg and arg.airbaseName
+    local rec = unitName and ATC.state.aircraft[unitName]
+    if not rec or not airbaseName then return end
+
+    local rwy = ATC.getRunway(airbaseName)
+    local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
+    local radios = telem and telem.radios or {}
+    local radioParts = {}
+    for idx = 1, 4 do
+        local f = radios[idx]
+        if f then
+            radioParts[#radioParts + 1] = string.format("R%d=%.3f", idx, f)
+        end
+    end
+    local radioText = (#radioParts > 0) and table.concat(radioParts, ", ") or "none"
+
+    local lines = { "[ATC DEBUG] Voice check for " .. airbaseName, "Radios: " .. radioText }
+    local roles = { "ground", "tower", "approach", "departure" }
+    for _, role in ipairs(roles) do
+        local freq = rwy and rwy.frequencies and rwy.frequencies[role]
+        if freq and freq.mhz then
+            local ok = ATC.isOnFrequency(unitName, airbaseName, role)
+            lines[#lines + 1] = string.format("%s %.3f MHz -> %s", role:upper(), freq.mhz, ok and "TUNED" or "NOT TUNED")
+        else
+            lines[#lines + 1] = string.format("%s (missing)", role:upper())
+        end
+    end
+
+    ATC.msg(rec.groupId, table.concat(lines, "\n"), true)
+end
+
 local function isRussianAircraft(unitName)
     local unit = Unit.getByName(unitName)
     if not unit then return false end
@@ -58,6 +120,9 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
     ATC.clearFieldMenu(unitName, abName)
     local fieldMenu = missionCommands.addSubMenuForGroup(gid, label, rec.menuRoot)
     rec.fieldMenus[abName] = fieldMenu
+    addFrequencyInfoCommands(gid, fieldMenu, rwy)
+    missionCommands.addCommandForGroup(gid, "Debug Voice Check",
+        fieldMenu, function(a) ATC.onVoiceDebugCheck(a) end, { unitName = unitName, airbaseName = abName })
     local arg = { unitName = unitName, airbaseName = abName }
     local unit   = Unit.getByName(unitName)
     local inAir  = unit and unit:inAir() or false
@@ -140,6 +205,9 @@ function ATC.buildFullMenu(unitName)
     local root = missionCommands.addSubMenuForGroup(
         rec.groupId, ATC.config.rootMenuLabel, nil)
     rec.menuRoot = root
+    missionCommands.addCommandForGroup(rec.groupId,
+        "Voice Debug: " .. (ATC.config.voiceDebug and "ON" or "OFF"),
+        root, ATC.onToggleVoiceDebug, { unitName = unitName })
     if rec.engagedField then
         local ab = Airbase.getByName(rec.engagedField)
         if ab then

@@ -1,9 +1,9 @@
 ﻿ATC.runways["Sochi-Adler"] = { hdg=60, reciprocal=240, elevation=98, ILSfreq=111.10, patternAlt=1598, patternDir="R",
     frequencies = {
-        ground   = { mhz=121.900, hz=121900002 },
-        tower    = { mhz=120.100, hz=120099998 },
-        approach = { mhz=123.600, hz=123599998 },
-        departure= { mhz=124.100, hz=124099998 }
+        ground   = { mhz=121.900, hz=121900000 },
+        tower    = { mhz=120.100, hz=120100000 },
+        approach = { mhz=123.600, hz=123600000 },
+        departure= { mhz=124.100, hz=124100000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

@@ -1,9 +1,9 @@
 ﻿local sukhumiRwy = { hdg=120, reciprocal=300, elevation=43, ILSfreq=0, patternAlt=1543,
     frequencies = {
         ground   = { mhz=121.500, hz=121500000 },
-        tower    = { mhz=120.300, hz=120300003 },
-        approach = { mhz=123.200, hz=123199997 },
-        departure= { mhz=124.300, hz=124300003 }
+        tower    = { mhz=120.300, hz=120300000 },
+        approach = { mhz=123.200, hz=123200000 },
+        departure= { mhz=124.300, hz=124300000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     crps = {

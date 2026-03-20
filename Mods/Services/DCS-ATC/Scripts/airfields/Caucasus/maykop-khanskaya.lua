@@ -1,8 +1,8 @@
 ﻿ATC.runways["Maykop-Khanskaya"] = { hdg=40, reciprocal=220, elevation=591, ILSfreq=0, patternAlt=2091,
     frequencies = {
-        ground   = { mhz=121.900, hz=121900002 },
+        ground   = { mhz=121.900, hz=121900000 },
         tower    = { mhz=119.500, hz=119500000 },
-        approach = { mhz=123.600, hz=123599998 },
+        approach = { mhz=123.600, hz=123600000 },
         departure= { mhz=124.000, hz=124000000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
