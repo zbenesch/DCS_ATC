@@ -608,7 +608,10 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local dx            = target.pos.x - uPos.x
     local dz            = target.pos.z - uPos.z
     local distToCorner  = math.sqrt(dx * dx + dz * dz) / 1852
-    if distToCorner < PATTERN_CORNER_NM then
+    local reportTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local nearestIdx = ATC.nearestCornerIdx(corners, uPos)
+    local nextIdx = (cornerIdx % #corners) + 1
+    if distToCorner <= reportTolerance or nearestIdx == nextIdx then
         advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
     end
 end

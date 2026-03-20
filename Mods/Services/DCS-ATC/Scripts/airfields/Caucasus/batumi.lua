@@ -10,5 +10,6 @@ ATC.runways["Batumi"] = { hdg=120, reciprocal=300, elevation=33, ILSfreq=110.30,
         { name="Batumi North", seq=1, lat=41.430880, lon=41.434030 },
         { name="Batumi East",  seq=2, lat=41.384870, lon=41.430170 },
         { name="Batumi South", seq=3, lat=41.325090, lon=41.331350 },
+        { name="Batumi West",  seq=4, lat=41.368000, lon=41.245000 },
     }
 }
