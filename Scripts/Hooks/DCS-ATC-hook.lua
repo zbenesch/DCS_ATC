@@ -18,6 +18,7 @@ _atcHook._startPending   = false
 _atcHook._frameCount     = 0
 _atcHook._simRunning     = false
 _atcHook._lastRadioDebug  = nil
+_atcHook._lastRadioPollDiag = 0
 
 local function loadFileIntoSSE(path, label)
     local f = io.open(path, "r")
@@ -35,31 +36,73 @@ local function loadFileIntoSSE(path, label)
     return ok
 end
 
--- Lua string used in export env to scan all device IDs and collect aviation-band frequencies.
--- Returns "UnitName|Hz1,Hz2,..." or "" if no player.
--- Device IDs 0-60 cover all known aircraft radio devices. Frequencies filtered to 100-400 MHz.
-local _EXPORT_RADIO_SCAN = [[
-    local ok_self, selfData = pcall(LoGetSelfData)
-    if not ok_self or not selfData or not selfData.UnitName then return "" end
-    local unitName = selfData.UnitName
-    local seen = {}
-    local freqs = {}
-    for devId = 0, 60 do
-        local ok, dev = pcall(GetDevice, devId)
-        if ok and dev and type(dev) ~= "number" then
-            local on_ok, isOn = pcall(function() return dev:is_on() end)
-            if on_ok and isOn then
-                local f_ok, freq = pcall(function() return dev:get_frequency() end)
-                if f_ok and type(freq) == "number"
-                   and freq >= 100000000 and freq <= 400000000
-                   and not seen[freq] then
-                    seen[freq] = true
-                    freqs[#freqs + 1] = tostring(math.floor(freq))
+-- Code injected once into the export env at mission start.
+-- Wraps LuaExportBeforeNextFrame so it runs in the cockpit frame loop
+-- where GetDevice() and LoGetSelfData() are always available.
+local _EXPORT_FRAME_INJECT = [[
+    local _dcsatc_prevFrame = LuaExportBeforeNextFrame
+    local _dcsatc_pollTime  = 0
+    LuaExportBeforeNextFrame = function()
+        -- Chain to existing export handler (SRS, TacView, etc.)
+        if _dcsatc_prevFrame then
+            local ok_p, _ = pcall(_dcsatc_prevFrame)
+        end
+        -- Throttle to 1 Hz
+        local now = os.time()
+        if now == _dcsatc_pollTime then return end
+        _dcsatc_pollTime = now
+        -- Read player identity (different DCS APIs/modules may expose
+        -- different fields for the same unit: Name vs UnitName).
+        local ok_self, sd = pcall(LoGetSelfData)
+        if not ok_self or type(sd) ~= "table" then return end
+        local unitKeys = {}
+        local function addKey(v)
+            if type(v) == "string" and v ~= "" then
+                for _, e in ipairs(unitKeys) do
+                    if e == v then return end
+                end
+                unitKeys[#unitKeys + 1] = v
+            end
+        end
+        addKey(sd.Name)
+        addKey(sd.UnitName)
+        if #unitKeys == 0 then return end
+        -- Scan cockpit devices for radio frequencies
+        local seen, list = {}, {}
+        for devId = 0, 64 do
+            local ok_d, dev = pcall(GetDevice, devId)
+            if ok_d and dev and type(dev) ~= "number" then
+                local ok_f, raw = pcall(function() return dev:get_frequency() end)
+                if ok_f and type(raw) == "number" and raw > 0 then
+                    -- Normalise to MHz (handle Hz / kHz / MHz returns)
+                    local mhz
+                    if     raw >= 1e8 then mhz = raw / 1e6
+                    elseif raw >= 1e5 then mhz = raw / 1e3
+                    elseif raw >= 100 then mhz = raw
+                    end
+                    if mhz and mhz >= 100 and mhz <= 500 then
+                        local key = math.floor(mhz * 1000 + 0.5)
+                        if not seen[key] then
+                            seen[key] = true
+                            list[#list+1] = string.format("%.3f", mhz)
+                        end
+                    end
                 end
             end
         end
+        -- Push frequencies to SSE.
+        -- Also store in a global in case net.dostring_in is unavailable here.
+        local tbl  = "{" .. table.concat(list, ",") .. "}"
+        _dcsatc_radioResult = table.concat(unitKeys, ";") .. "|" .. table.concat(list, ",")
+        local cmd = 'if ATC and ATC.setRadioFrequencies then '
+        for _, key in ipairs(unitKeys) do
+            local safe = key:gsub('["\\]', '\\%0')
+            cmd = cmd .. 'ATC.setRadioFrequencies("' .. safe .. '", ' .. tbl .. ') '
+        end
+        cmd = cmd .. 'end'
+        pcall(net.dostring_in, "server", cmd)
     end
-    return unitName .. "|" .. table.concat(freqs, ",")
+    return "ok"
 ]]
 
 function _atcHook.onMissionLoadEnd()
@@ -129,6 +172,16 @@ function _atcHook.onSimulationStart()
     ]])
     log.write("DCS-ATC", log.INFO, "sym-check: " .. tostring(symCheck))
 
+    -- Inject radio poller into the export env's per-frame callback.
+    -- LuaExportBeforeNextFrame runs natively in the cockpit frame loop where
+    -- GetDevice() and LoGetSelfData() are guaranteed to be available.
+    -- Results are pushed directly to SSE via net.dostring_in("server", ...),
+    -- and also stored in _dcsatc_radioResult as a fallback for onSimulationFrame.
+    local exportInjectOk, exportInjectResult = pcall(net.dostring_in, "export", _EXPORT_FRAME_INJECT)
+    log.write("DCS-ATC", log.INFO,
+        "Export frame-hook inject: ok=" .. tostring(exportInjectOk)
+        .. " result=" .. tostring(exportInjectResult))
+
     _atcHook._startPending = true
     _atcHook._frameCount   = 0
 end
@@ -153,46 +206,61 @@ function _atcHook.onSimulationFrame()
 
     if not _atcHook._simRunning then return end
 
-    -- ── 1 Hz real-time radio frequency polling ────────────────────────────────
-    -- Uses the export environment (where GetDevice is available) to read live
-    -- cockpit radio frequencies, then pushes them into the SSE.
+    -- ── 1 Hz fallback radio poll ─────────────────────────────────────────────
+    -- Primary path: the injected LuaExportBeforeNextFrame calls
+    --   net.dostring_in("server", ATC.setRadioFrequencies(...)) directly.
+    -- Fallback (if net unavailable in export env): the injected hook writes
+    --   _dcsatc_radioResult as a global; we read + push it here.
     local now = os.time()
     if now == _atcHook._lastRadioPoll then return end
     _atcHook._lastRadioPoll = now
 
-    local ok, exportOk, exportResult = pcall(net.dostring_in, "export", _EXPORT_RADIO_SCAN)
-    if not ok or not exportOk or not exportResult or exportResult == "" then return end
+    local ok_r, rb1, rb2 = pcall(net.dostring_in, "export",
+        "return (_dcsatc_radioResult or '')")
+    if not ok_r then return end
 
-    -- exportResult is "UnitName|Hz1,Hz2,..."
-    local pipePos = exportResult:find("|", 1, true)
+    local rawResult = nil
+    if type(rb1) == "string" then
+        rawResult = rb1
+    elseif type(rb1) == "boolean" and rb1 and type(rb2) == "string" then
+        rawResult = rb2
+    end
+
+    if not rawResult or rawResult == "" then return end
+
+    -- rawResult is "UnitKey1;UnitKey2|mhz1,mhz2,..." (normalised in export hook)
+    local pipePos = rawResult:find("|", 1, true)
     if not pipePos then return end
 
-    local unitName = exportResult:sub(1, pipePos - 1)
-    local freqsPart = exportResult:sub(pipePos + 1)
-    if unitName == "" then return end
+    local keyPart = rawResult:sub(1, pipePos - 1)
+    local freqsPart = rawResult:sub(pipePos + 1)
+    if keyPart == "" then return end
 
-    -- Build a Lua table constructor string: {mhz1, mhz2, ...}
     local mhzParts = {}
-    for hzStr in freqsPart:gmatch("[^,]+") do
-        local hz = tonumber(hzStr)
-        if hz then
-            -- Round to 3 decimal MHz (5 kHz precision, same as SRS)
-            mhzParts[#mhzParts + 1] = string.format("%.3f", hz / 1000000)
+    for mhzStr in freqsPart:gmatch("[^,]+") do
+        if tonumber(mhzStr) then
+            mhzParts[#mhzParts + 1] = mhzStr
         end
     end
 
-    -- Escape the unit name for safe embedding in Lua (replace special chars)
-    local safeUnit = unitName:gsub('[\\"]', '\\%0')  -- escape backslash and quote
     local freqTableStr = "{" .. table.concat(mhzParts, ",") .. "}"
 
-    net.dostring_in("server", string.format(
-        'if ATC and ATC.setRadioFrequencies then ATC.setRadioFrequencies("%s", %s) end',
-        safeUnit, freqTableStr))
+    local cmd = "if ATC and ATC.setRadioFrequencies then "
+    local firstKey = nil
+    for key in keyPart:gmatch("[^;]+") do
+        if key and key ~= "" then
+            if not firstKey then firstKey = key end
+            local safe = key:gsub('["\\]', '\\%0')
+            cmd = cmd .. string.format('ATC.setRadioFrequencies("%s", %s) ', safe, freqTableStr)
+        end
+    end
+    cmd = cmd .. "end"
+    net.dostring_in("server", cmd)
 
-    local debugLine = unitName .. "=" .. freqTableStr
+    local debugLine = tostring(firstKey or keyPart) .. "=" .. freqTableStr
     if debugLine ~= _atcHook._lastRadioDebug then
         _atcHook._lastRadioDebug = debugLine
-        log.write("DCS-ATC", log.INFO, "Live radios " .. debugLine)
+        log.write("DCS-ATC", log.INFO, "Live radios (fallback) " .. debugLine)
     end
 end
 

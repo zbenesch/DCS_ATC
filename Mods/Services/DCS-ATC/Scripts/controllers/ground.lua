@@ -8,7 +8,8 @@ function ATC.onStartupRequest(arg)
 	local rec = ATC.state.aircraft[unitName]
 	local cs = unit:getCallsign() or unitName
 	-- Enqueue the request
-	ATC.msg(unitName, string.format("%s\nStartup clearance granted. Contact ground when ready to taxi.", cs))
+	local startupAb = rec and rec.engagedField or "Kobuleti"
+	ATC.msg(unitName, string.format("%s\nStartup clearance granted. Contact ground when ready to taxi.", cs), false, startupAb, "Ground")
 end
 
 function ATC.onTaxiRequest(arg)
@@ -18,6 +19,7 @@ function ATC.onTaxiRequest(arg)
 	-- Handle taxi request individually, not by group
 	local rec = ATC.state.aircraft[unitName]
 	local cs = unit:getCallsign() or unitName
+	local groupId = rec and rec.groupId or (unit:getGroup() and unit:getGroup():getID())
 
 	-- Determine airfield
 	local airfield = rec and rec.engagedField or "Kobuleti"
@@ -88,7 +90,7 @@ function ATC.onTaxiRequest(arg)
 		routeStr = "\nTaxi route: " .. table.concat(names, " → ")
 	end
 
-	ATC.msg(groupId, string.format("%s, cleared taxi, hold short runway %s.%s", cs, bestRwy, routeStr))
+	ATC.msg(groupId, string.format("%s, cleared taxi, hold short runway %s.%s", cs, bestRwy, routeStr), false, airfield, "Ground")
 end
 -- ...existing code...
 

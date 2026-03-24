@@ -6,11 +6,13 @@
         departure= { mhz=124.300, hz=124300000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
+    
     crps = {
-        { name="Gelendzhik West", seq=1, lat=44.37652, lon=37.56277 },
-        { name="Gelendzhik East", seq=2, lat=44.32109, lon=38.06589 },
-        { name="Gelendzhik South", seq=3, lat=44.24500, lon=37.91000 },
-        { name="Gelendzhik North", seq=4, lat=44.44500, lon=37.83000 },
+        { name="Gelendzhik CRP1", seq=1, x=-50243.091434866998, y=286975.709827689978, radius=3703.9296 },
+        { name="Gelendzhik CRP2", seq=2, x=-43367.369122538999, y=296637.677736970014, radius=2777.3376 },
+        { name="Gelendzhik CRP3", seq=3, x=-51195.599280795002, y=305696.911264029972, radius=2777.3376 },
+        { name="Gelendzhik CRP4", seq=4, x=-59045.190009026002, y=298842.266808059998, radius=2777.3376 },
+        { name="Gelendzhik CRP5", seq=5, x=-56178.608720816002, y=295055.553461630014, radius=1388.6688 },
+        { name="Gelendzhik CRP6", seq=6, x=-47648.586015658002, y=302345.144738339994, radius=1388.6688 },
     },
-    chart = "charts/Caucasus - Aerodrome Charts.pdf"
 }

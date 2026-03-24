@@ -10,6 +10,9 @@ ATC._PSUBS = ATC._PSUBS or {}
 ATC._WSET = ATC._WSET or {}
 ATC._NATO = ATC._NATO or {}
 ATC._DWORDS = ATC._DWORDS or {}
+ATC._CALLSIGNS = ATC._CALLSIGNS or {
+    enfield=true, springfield=true, uzi=true, colt=true, dodge=true, ford=true, chevy=true, pontiac=true, lobo=true, hawg=true, olds=true, lincoln=true, jedi=true, viper=true, venom=true, witch=true, cobra=true, bone=true, mako=true, dude=true, tiger=true, wolf=true, weasel=true, panther=true, hawk=true, reaper=true, ghost=true, eagle=true, shark=true, sniper=true, lancer=true, devil=true, rebel=true, storm=true, talon=true
+}
 ATC.menuPaths = {}  -- [coalitionID] = { root, ground, tower, approach, departure }
 function ATC.ensureMenusForCoalition(coalitionID)
     if not coalitionID then return end
@@ -19,7 +22,7 @@ ATC.config = {
     msgDuration        = 10,
     msgDurationLong    = 25,
     nearRadiusM        = 185200,
-    radioTxPower       = 1000,
+    radioTxPower       = 50000,
     radioModulation    = 0,
     gsAngleDeg         = 3.0,
     magvar             = 6,
@@ -63,7 +66,7 @@ ATC.config = {
         ["AH-64D_BLK_II"]       = { clean=120, gear= 80, final= 50, maxFinal= 70 },
         ["default"]             = { clean=250, gear=180, final=150, maxFinal=200 },
     },
-    rootMenuLabel    = "[ATC options]",
+    rootMenuLabel    = "ATC",
     menuRefreshLabel = "  Refresh Airfield List",
     refreshInterval = 10,
     queueBroadcastInterval = 30,
@@ -72,6 +75,7 @@ ATC.config = {
     defaultPatternAltFt = 1500,
     voiceDebug = false,
     voiceDebugToGroup = true,
+    disableVoice = true,  -- when true, disable tokenization and radioTransmission audio
     magvarCaucasus = 6,   -- Caucasus / Black Sea
     magvarPG = 2,         -- Persian Gulf
     magvarSyria = 4,      -- Syria
@@ -82,9 +86,7 @@ function ATC.voiceDebug(groupId, msg)
     if not (ATC and ATC.config and ATC.config.voiceDebug) then return end
     local line = "VOICE " .. tostring(msg)
     ATC.log(line)
-    if ATC.config.voiceDebugToGroup and groupId then
-        trigger.action.outTextForGroup(groupId, "[ATC DEBUG] " .. tostring(msg), 8, false)
-    end
+    -- Display is disabled; only log to file
 end
 
 local function fmtRadioList(radios)
@@ -136,6 +138,8 @@ function ATC.getOrCreateRecord(unitName, groupId)
             approachGate  = {},  -- [airbaseName] = current approach gate number (1,2,3,4...)
             stackAlt      = {},  -- [airbaseName] = assigned hold altitude (ft)
             landingCleared = {}, -- [airbaseName] = true once "cleared for approach/landing" issued
+            finalCleared       = {}, -- [airbaseName] = true once final landing clearance issued
+            gearReminded       = {}, -- [airbaseName] = true once gear/checkspeed reminder sent
             holdPhase          = {}, -- [airbaseName] = "inbound"|"outbound" racetrack leg
             patternCornerIdx   = {}, -- [airbaseName] = 1..#corners, which CRP to fly to next
             patternAlt         = {}, -- [airbaseName] = current stack altitude in ft (MSL)
@@ -168,7 +172,10 @@ function ATC.getPhase(unitName, airbaseName)
     return rec.phases[airbaseName] or "unknown"
 end
 local function getVoiceDuration(text, abName, controller)
-    local voice = "david"
+    if ATC and ATC.config and ATC.config.disableVoice then
+        return 0
+    end
+    local voice = "adam"
     if abName and controller then
         voice = ATC.getStationVoice(abName, controller)
     end
@@ -180,18 +187,52 @@ local function getVoiceDuration(text, abName, controller)
     end
     return math.max(total, 2.0) -- never less than 2s
 end
-function ATC.msg(groupId, text, long, abName, controller)
+local function sendRadioVoice(groupId, abPos, text, abName, controller, dur)
+    if not abPos or not abName or not controller then return end
+    local ok, err = pcall(function()
+        controller = controller or "Approach"
+        local freqHz, modulation, power = ATC.getControllerRadio(abName, controller)
+        local voice    = ATC.getStationVoice(abName, controller)
+        local tokens   = ATC.textToTokens(text)
+        local startT   = ATC.reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(text))
+        ATC.voiceDebug(groupId, string.format(
+            "radioMsg %s/%s voice=%s freqHz=%s text='%s'",
+            tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text)))
+        ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
+    end)
+    if not ok then
+        ATC.log(string.format("WARN  sendRadioVoice fallback for %s/%s: %s",
+            tostring(abName), tostring(controller), tostring(err)))
+    end
+end
+
+function ATC.msg(groupId, text, long, abName, controller, skipVoice)
     local dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
     if abName and controller then
         local ok, result = pcall(getVoiceDuration, text, abName, controller)
-        if ok then
+        if ok and type(result) == "number" and result > 0 then
             dur = result
         else
-            ATC.log(string.format("WARN  msg duration fallback for %s/%s: %s",
-                tostring(abName), tostring(controller), tostring(result)))
+            -- If voice is disabled or duration couldn't be computed, use long duration
+            dur = ATC.config.msgDurationLong
+            if not ok then
+                ATC.log(string.format("WARN  msg duration fallback for %s/%s: %s",
+                    tostring(abName), tostring(controller), tostring(result)))
+            end
         end
     end
     trigger.action.outTextForGroup(groupId, text, dur, false)
+
+    if not skipVoice and abName and controller then
+        local ab = Airbase.getByName(abName)
+        local abPos = ab and ATC.getAirbasePos(ab)
+        sendRadioVoice(groupId, abPos, text, abName, controller, dur)
+    end
+end
+
+function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
+    ATC.msg(groupId, text, long, abName, controller, true)
+    sendRadioVoice(groupId, abPos, text, abName, controller, nil)
 end
 local function normalizeAirbaseName(name)
     if not name or name == "" then return nil end
@@ -252,12 +293,21 @@ function ATC.getRunway(abName)
     return nil
 end
 function ATC.distVec3(a, b)
+    if not a or not b or type(a.x) ~= "number" or type(b.x) ~= "number"
+       or type(a.y) ~= "number" or type(b.y) ~= "number"
+       or type(a.z) ~= "number" or type(b.z) ~= "number" then
+        return math.huge
+    end
     local dx = a.x - b.x
     local dy = a.y - b.y
     local dz = a.z - b.z
     return math.sqrt(dx*dx + dy*dy + dz*dz)
 end
 function ATC.distVec3H(a, b)
+    if not a or not b or type(a.x) ~= "number" or type(b.x) ~= "number"
+       or type(a.z) ~= "number" or type(b.z) ~= "number" then
+        return math.huge
+    end
     local dx = a.x - b.x
     local dz = a.z - b.z
     return math.sqrt(dx*dx + dz*dz)
@@ -396,11 +446,13 @@ function ATC.getApproachSpeeds(unit)
         or ATC.config.approachSpeeds["default"]
 end
 
-function ATC.isOnFrequency(unitName, airbaseName, controller)
+function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
     -- Check if player is tuned to the correct frequency
     -- controller = "approach", "tower", "ground", "departure"
     -- Returns true if on correct freq, false otherwise
     if not unitName or not airbaseName or not controller then return false end
+    opts = opts or {}
+    local allowNoRadioBypass = (opts.allowNoRadioBypass ~= false)
     
     local rec = ATC.state.aircraft and ATC.state.aircraft[unitName]
     local groupId = rec and rec.groupId or nil
@@ -422,29 +474,38 @@ function ATC.isOnFrequency(unitName, airbaseName, controller)
     
     -- Get current radio frequencies from telemetry
     local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
-    if not telem or not telem.radios then
+    local radios = telem and telem.radios
+    -- If no radio data has arrived yet, allow the request through
+    -- (export hook may still be initialising).  Log, but don't block.
+    local hasRadioData = radios and next(radios) ~= nil
+    if not hasRadioData then
+        if allowNoRadioBypass then
+            ATC.voiceDebug(groupId, string.format(
+                "%s freq-check BYPASS (no radio data) controller=%s required=%.3f",
+                tostring(unitName), tostring(controller), requiredFreqMhz))
+            return true
+        end
         ATC.voiceDebug(groupId, string.format(
-            "%s radios unavailable for %s (required %.3f)",
+            "%s freq-check NO RADIO DATA controller=%s required=%.3f",
             tostring(unitName), tostring(controller), requiredFreqMhz))
         return false
     end
     
-    -- Check if ANY of the 4 radios is tuned to the correct frequency
-    -- Allow 0.05 MHz tolerance for floating point
+    -- Check if ANY radio is tuned to the correct frequency (±0.05 MHz tolerance)
     local tolerance = 0.05
     for radioIdx = 1, 4 do
-        local currentFreqMhz = telem.radios[radioIdx]
+        local currentFreqMhz = radios[radioIdx]
         if currentFreqMhz and math.abs(currentFreqMhz - requiredFreqMhz) < tolerance then
             ATC.voiceDebug(groupId, string.format(
                 "%s %s OK required=%.3f tuned=%.3f radios=[%s]",
-                tostring(unitName), tostring(controller), requiredFreqMhz, currentFreqMhz, fmtRadioList(telem.radios)))
+                tostring(unitName), tostring(controller), requiredFreqMhz, currentFreqMhz, fmtRadioList(radios)))
             return true
         end
     end
 
     ATC.voiceDebug(groupId, string.format(
         "%s %s FAIL required=%.3f radios=[%s]",
-        tostring(unitName), tostring(controller), requiredFreqMhz, fmtRadioList(telem.radios)))
+        tostring(unitName), tostring(controller), requiredFreqMhz, fmtRadioList(radios)))
     
     return false
 end
@@ -483,15 +544,13 @@ function ATC.log(msg)
     end
 end
 local _phraseSeqId = 0
+local _missingVoiceClipLogged = {}
 local function getPhraseAudioPath(voice, token)
-    local relPath = string.format("%s/%s.ogg", voice, token)
-    if _scriptsBase and _scriptsBase ~= "" then
-        return relPath
-    end
-    return "AUDIO/atc/" .. relPath
+    -- Always use .miz internal path for radioTransmission
+    return string.format("AUDIO/atc/%s/%s.ogg", voice, token)
 end
 
-local function getControllerRadio(abName, controller)
+function ATC.getControllerRadio(abName, controller)
     local rwy     = ATC.runways and ATC.runways[abName]
     local freqs   = rwy and rwy.frequencies
     local ctrlKey = (controller or "Approach"):lower()
@@ -508,8 +567,9 @@ local function getControllerRadio(abName, controller)
 end
 
 function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
+    if ATC and ATC.config and ATC.config.disableVoice then return end
     if not tokens or #tokens == 0 then return end
-    voice  = voice  or "david"
+    voice  = voice  or "adam"
     startT = startT or (timer.getTime() + 0.05)
     modulation = modulation or ATC.config.radioModulation or 0
     power = power or ATC.config.radioTxPower or 1000
@@ -518,25 +578,66 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modul
     ATC.voiceDebug(groupId, string.format(
         "TX seq=%d voice=%s freqHz=%s modulation=%s power=%s tokens=%d",
         seqId, tostring(voice), tostring(freqHz), tostring(modulation), tostring(power), #tokens))
+    -- Debug: Log the contents of ATC._phraseDur at runtime
+    if ATC._phraseDur then
+        local count = 0
+        for k, v in pairs(ATC._phraseDur) do count = count + 1 end
+        ATC.log("DEBUG  ATC._phraseDur contains " .. tostring(count) .. " entries.")
+        for k, v in pairs(ATC._phraseDur) do
+            if count <= 20 then -- only log all if small, else just a sample
+                ATC.log("DEBUG  ATC._phraseDur[" .. tostring(k) .. "] = " .. tostring(v))
+            end
+        end
+    else
+        ATC.log("DEBUG  ATC._phraseDur is nil!")
+    end
     local t = startT
     local phraseDur = ATC._phraseDur or {}
     for i, token in ipairs(tokens) do
-        local dur  = phraseDur[voice .. "/" .. token] or 0.45
-        local name = string.format("ATC_%d_%d", seqId, i)
-        local path = getPhraseAudioPath(voice, token)
-        ATC.voiceDebug(groupId, string.format(
-            "TX seq=%d token=%d/%d %s path=%s start=%.2f dur=%.2f",
-            seqId, i, #tokens, tostring(token), tostring(path), t, dur))
-        local _pos, _f, _n, _p, _m, _w = abPos, freqHz, name, path, modulation, power
-        timer.scheduleFunction(function()
-            trigger.action.radioTransmission(_p, _pos, _m, false, _f, _w, _n)
-            return nil
-        end, nil, t)
-        t = t + dur + 0.05   -- 50 ms gap between clips
+        local clipKey = voice .. "/" .. token
+        local dur  = phraseDur[clipKey]
+        if not dur then
+            if not _missingVoiceClipLogged[clipKey] then
+                _missingVoiceClipLogged[clipKey] = true
+                ATC.log("WARN  VOICE missing clip: " .. tostring(clipKey))
+            end
+        else
+            local name = string.format("ATC_%d_%d", seqId, i)
+            local path = getPhraseAudioPath(voice, token)
+            ATC.voiceDebug(groupId, string.format(
+                "TX seq=%d token=%d/%d %s path=%s start=%.2f dur=%.2f",
+                seqId, i, #tokens, tostring(token), tostring(path), t, dur))
+            local _pos, _f, _n, _p, _m, _w = abPos, freqHz, name, path, modulation, power
+            timer.scheduleFunction(function()
+                ATC.log("DEBUG  trigger.action.radioTransmission called: path=" .. tostring(_p) .. ", freqHz=" .. tostring(_f) .. ", name=" .. tostring(_n))
+                -- Compute nearest player distance to the transmission point for troubleshooting
+                local minDist = nil
+                for _, side in ipairs({ coalition.side.BLUE, coalition.side.RED, coalition.side.NEUTRAL }) do
+                    for _, pu in ipairs(coalition.getPlayers(side) or {}) do
+                        local up = pu and pu:getPoint()
+                        if up and _pos then
+                            local dx = up.x - (_pos.x or 0)
+                            local dz = up.z - (_pos.z or 0)
+                            local d = math.sqrt(dx*dx + dz*dz)
+                            minDist = minDist and math.min(minDist, d) or d
+                        end
+                    end
+                end
+                if minDist then
+                    ATC.log(string.format("DEBUG  nearest player dist to tx point = %.1f m (%.2f NM)", minDist, (minDist/1852)))
+                else
+                    ATC.log("DEBUG  no players found when scheduling radioTransmission")
+                end
+                trigger.action.radioTransmission(_p, _pos, _m, false, _f, _w, _n)
+                return nil
+            end, nil, t)
+            t = t + dur + 0.05   -- 50 ms gap between clips
+        end
     end
 end
 
 function ATC.textToTokens(text)
+    if ATC and ATC.config and ATC.config.disableVoice then return {} end
     if not text or text == "" then return {} end
     text = text:lower()
     text = text:gsub("[\n\r]", " ")
@@ -552,37 +653,42 @@ function ATC.textToTokens(text)
     text = text:gsub("%s+", " ")
     text = text:gsub("^%s+", ""):gsub("%s+$", "")
     local tokens = {}
+    -- Special handling for callsign + number at start
+    local callsign, num, rest = text:match("^(%w+)%s+(%d%d)%s*(.*)$")
+    if callsign and ATC._CALLSIGNS[callsign] then
+        table.insert(tokens, callsign)
+        for d in num:gmatch(".") do
+            local dw = (ATC._DWORDS or {})[tonumber(d)]
+            if dw then table.insert(tokens, dw) end
+        end
+        text = rest or ""
+    end
     for word in text:gmatch("[%w_%-]+") do
         if word:match("^__(.-)__$") then
             local chunk = word:match("^__(.-)__$"):gsub("_", "-")
-            table.insert(tokens, chunk)
-        elseif word:match("^%d+$") then
-            for d in word:gmatch(".") do
-                local dw = (ATC._DWORDS or {})[tonumber(d)]
-                if dw then table.insert(tokens, dw) end
+            chunk = chunk:gsub("[^%w%-]", ""):gsub("%-+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
+            if chunk ~= "" then
+                table.insert(tokens, chunk)
             end
+        elseif word:match("^%d+$") then
+            -- Numbers as a single token (not split)
+            table.insert(tokens, word)
         elseif (ATC._WSET or {})[word] then
             table.insert(tokens, word)
+        elseif (ATC._CALLSIGNS or {})[word] then
+            table.insert(tokens, word)
         else
-            for c in word:gmatch(".") do
-                local nato = (ATC._NATO or {})[c]
-                if nato then
-                    table.insert(tokens, nato)
-                elseif tonumber(c) then
-                    local dw = (ATC._DWORDS or {})[tonumber(c)]
-                    if dw then table.insert(tokens, dw) end
-                end
-            end
+            -- Unknown word: skip (do not split or spell)
         end
     end
     return tokens
 end
-local _PHRASE_VOICES = { "daniel", "adam", "alice" }
+local _PHRASE_VOICES = { "adam", "alice", "daniel" }
 local _ROLE_VOICE = {
-    approach  = "daniel",
-    departure = "daniel",
-    tower     = "adam",
-    ground    = "alice",
+    approach  = "adam",
+    departure = "adam",
+    tower     = "alice",
+    ground    = "daniel",
 }
 function ATC.getStationVoice(abName, role)
     local r = role and role:lower()
@@ -594,44 +700,15 @@ function ATC.getStationVoice(abName, role)
 end
 local _RADIO_GAP_SEC = 0.35
 local _radioBusyUntil = {}
-local function reserveRadioWindow(abName, controller, duration)
+function ATC.reserveRadioWindow(abName, controller, duration)
     local now = timer.getTime() + 0.05
     local key = string.format("%s|%s", abName or "ATC", (controller or "Approach"):lower())
     local startT = math.max(now, _radioBusyUntil[key] or 0)
     _radioBusyUntil[key] = startT + (duration or 2) + _RADIO_GAP_SEC
     return startT
 end
-function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
-    local dur = nil
-    if abName and controller then
-        local ok, result = pcall(getVoiceDuration, text, abName, controller)
-        if ok then
-            dur = result
-        else
-            ATC.log(string.format("WARN  radioMsg duration fallback for %s/%s: %s",
-                tostring(abName), tostring(controller), tostring(result)))
-        end
-    end
-    ATC.msg(groupId, text, long, abName, controller)
-    if abPos and abName then
-        local ok, err = pcall(function()
-            controller     = controller or "Approach"
-            local freqHz, modulation, power = getControllerRadio(abName, controller)
-            local voice    = ATC.getStationVoice(abName, controller)
-            local tokens   = ATC.textToTokens(text)
-            local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(text))
-            ATC.voiceDebug(groupId, string.format(
-                "radioMsg %s/%s voice=%s freqHz=%s text='%s'",
-                tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text)))
-            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
-        end)
-        if not ok then
-            ATC.log(string.format("WARN  radioMsg audio fallback for %s/%s: %s",
-                tostring(abName), tostring(controller), tostring(err)))
-        end
-    end
-end
-function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller)
+-- The legacy radioMsg function body has been moved to the earlier definition at the top of this file.
+function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller, skipVoice)
     local spoken = voiceText or text
     local dur = nil
     if abName and controller then
@@ -643,18 +720,20 @@ function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, contr
                 tostring(abName), tostring(controller), tostring(result)))
         end
     end
-    if dur then
+    if dur and type(dur) == "number" and dur > 0 then
         trigger.action.outTextForGroup(groupId, text, dur, false)
     else
-        ATC.msg(groupId, text, long, abName, controller)
+        -- If voice is disabled or duration couldn't be computed, show text using the
+        -- long duration so the initial greeting/vector remains visible.
+        ATC.msg(groupId, text, true, abName, controller)
     end
-    if abPos and abName then
+    if not skipVoice and abPos and abName then
         local ok, err = pcall(function()
             controller     = controller or "Approach"
-            local freqHz, modulation, power = getControllerRadio(abName, controller)
+            local freqHz, modulation, power = ATC.getControllerRadio(abName, controller)
             local voice    = ATC.getStationVoice(abName, controller)
             local tokens   = ATC.textToTokens(spoken)
-            local startT   = reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
+            local startT   = ATC.reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
             ATC.voiceDebug(groupId, string.format(
                 "radioMsgCustom %s/%s voice=%s freqHz=%s text='%s' spoken='%s'",
                 tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text), tostring(spoken)))

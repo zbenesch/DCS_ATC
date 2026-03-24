@@ -1,0 +1,102 @@
+[
+  {
+    "airfield": "Kutaisi",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\kutaisi.lua",
+    "lua_block": "    crps = {\n        { name=\"Kutaisi CRP1\", seq=1, x=-279155.867615839990, y=674460.197157170041, radius=3703.9296 },\n        { name=\"Kutaisi CRP2\", seq=2, x=-277467.115512080025, y=687150.146200150019, radius=2777.3376 },\n        { name=\"Kutaisi CRP3\", seq=3, x=-287679.117285310000, y=693258.748551729950, radius=2777.3376 },\n        { name=\"Kutaisi CRP4\", seq=4, x=-292736.385637769999, y=678853.156855970039, radius=2777.3376 },\n        { name=\"Kutaisi CRP5\", seq=5, x=-288647.818067829998, y=676091.284670299967, radius=1388.6688 },\n        { name=\"Kutaisi CRP6\", seq=6, x=-283165.244517530024, y=692832.854133639950, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Senaki-Kolkhi",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\senaki-kolkhi.lua",
+    "lua_block": "    crps = {\n        { name=\"Senaki-Kolkhi CRP1\", seq=1, x=-274361.061487680010, y=641965.493562940042, radius=3703.9296 },\n        { name=\"Senaki-Kolkhi CRP2\", seq=2, x=-276193.995179940015, y=653780.464474800043, radius=2777.3376 },\n        { name=\"Senaki-Kolkhi CRP3\", seq=3, x=-288565.851967010007, y=654667.051549909986, radius=2777.3376 },\n        { name=\"Senaki-Kolkhi CRP4\", seq=4, x=-287212.775300649984, y=638475.827655739966, radius=2777.3376 },\n        { name=\"Senaki-Kolkhi CRP5\", seq=5, x=-282101.157803860027, y=638223.176224219962, radius=1388.6688 },\n        { name=\"Senaki-Kolkhi CRP6\", seq=6, x=-284162.605403799971, y=656743.342622420052, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Kobuleti",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\kobuleti.lua",
+    "lua_block": "    crps = {\n        { name=\"Kobuleti CRP1\", seq=1, x=-312731.049518799991, y=626199.574710189947, radius=3703.9296 },\n        { name=\"Kobuleti CRP2\", seq=2, x=-309353.785705289978, y=637369.616329160053, radius=2777.3376 },\n        { name=\"Kobuleti CRP3\", seq=3, x=-320630.636335020012, y=645683.037872600020, radius=2777.3376 },\n        { name=\"Kobuleti CRP4\", seq=4, x=-326755.007846880006, y=630475.693059989950, radius=2777.3376 },\n        { name=\"Kobuleti CRP5\", seq=5, x=-322120.473888119974, y=627590.896073860000, radius=1388.6688 },\n        { name=\"Kobuleti CRP6\", seq=6, x=-315935.397207310016, y=643390.919436909957, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Batumi",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\batumi.lua",
+    "lua_block": "    crps = {\n        { name=\"Batumi CRP1\", seq=1, x=-345918.424113880028, y=616378.738661400042, radius=3703.9296 },\n        { name=\"Batumi CRP2\", seq=2, x=-353478.388546760019, y=627045.671871070052, radius=2777.3376 },\n        { name=\"Batumi CRP3\", seq=3, x=-365470.907565650006, y=618969.931659640046, radius=2777.3376 },\n        { name=\"Batumi CRP4\", seq=4, x=-357987.079346470011, y=606325.950185379945, radius=2777.3376 },\n        { name=\"Batumi CRP5\", seq=5, x=-351770.315725689987, y=608468.849199690041, radius=1388.6688 },\n        { name=\"Batumi CRP6\", seq=6, x=-361629.491972939984, y=623499.726962130051, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Sukhumi",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\sukhumi.lua",
+    "lua_block": "    crps = {\n        { name=\"Sukhumi CRP1\", seq=1, x=-212450.137733429990, y=564049.639625780052, radius=3703.9296 },\n        { name=\"Sukhumi CRP2\", seq=2, x=-218331.807085089997, y=573154.823662759969, radius=2777.3376 },\n        { name=\"Sukhumi CRP3\", seq=3, x=-230369.090777990001, y=567837.182701420039, radius=2777.3376 },\n        { name=\"Sukhumi CRP4\", seq=4, x=-221653.536153900000, y=554278.436911249999, radius=2777.3376 },\n        { name=\"Sukhumi CRP5\", seq=5, x=-217096.062211770011, y=556853.387448369991, radius=1388.6688 },\n        { name=\"Sukhumi CRP6\", seq=6, x=-225953.884196060011, y=570170.267754680011, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Gudauta",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\gudauta.lua",
+    "lua_block": "    crps = {\n        { name=\"Gudauta CRP1\", seq=1, x=-205863.651172100013, y=513969.605325959972, radius=3703.9296 },\n        { name=\"Gudauta CRP2\", seq=2, x=-195963.175832250010, y=507883.024768120027, radius=2777.3376 },\n        { name=\"Gudauta CRP3\", seq=3, x=-187307.978363780014, y=518245.532721269992, radius=2777.3376 },\n        { name=\"Gudauta CRP4\", seq=4, x=-198262.854949989996, y=525672.276305670035, radius=2777.3376 },\n        { name=\"Gudauta CRP5\", seq=5, x=-202336.153203149996, y=522034.436097819998, radius=1388.6688 },\n        { name=\"Gudauta CRP6\", seq=6, x=-191085.929611730011, y=513565.320712359971, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Tbilisi-Lochini",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\tbilisi-lochini.lua",
+    "lua_block": "    crps = {\n        { name=\"Tbilisi-Lochini CRP1\", seq=1, x=-305999.903062270023, y=896050.212783530005, radius=3703.9296 },\n        { name=\"Tbilisi-Lochini CRP2\", seq=2, x=-314671.074004360009, y=905343.400619599968, radius=2777.3376 },\n        { name=\"Tbilisi-Lochini CRP3\", seq=3, x=-323490.050759969978, y=896889.371881549945, radius=2777.3376 },\n        { name=\"Tbilisi-Lochini CRP4\", seq=4, x=-315263.894586779992, y=885643.596443849965, radius=2777.3376 },\n        { name=\"Tbilisi-Lochini CRP5\", seq=5, x=-310532.228761740029, y=888008.748015800025, radius=1388.6688 },\n        { name=\"Tbilisi-Lochini CRP6\", seq=6, x=-319991.893286740000, y=900319.890682419995, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Vaziani",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\vaziani.lua",
+    "lua_block": "    crps = {\n        { name=\"Vaziani CRP1\", seq=1, x=-309842.330994500022, y=903904.571830090019, radius=3703.9296 },\n        { name=\"Vaziani CRP2\", seq=2, x=-318423.092234659998, y=911387.891972259968, radius=2777.3376 },\n        { name=\"Vaziani CRP3\", seq=3, x=-329077.573114030005, y=904375.873618889949, radius=2777.3376 },\n        { name=\"Vaziani CRP4\", seq=4, x=-318649.246125160018, y=892583.744599140016, radius=2777.3376 },\n        { name=\"Vaziani CRP5\", seq=5, x=-315051.362798680027, y=895633.032271999982, radius=1388.6688 },\n        { name=\"Vaziani CRP6\", seq=6, x=-325471.708795499988, y=907425.676834960002, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Beslan",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\beslan.lua",
+    "lua_block": "    crps = {\n        { name=\"Beslan CRP1\", seq=1, x=-140355.526094119996, y=837113.601080290042, radius=3703.9296 },\n        { name=\"Beslan CRP2\", seq=2, x=-142518.641280920012, y=850528.384433330037, radius=2777.3376 },\n        { name=\"Beslan CRP3\", seq=3, x=-155108.127088070003, y=850484.748936800053, radius=2777.3376 },\n        { name=\"Beslan CRP4\", seq=4, x=-153654.634021829988, y=834624.527779410011, radius=2777.3376 },\n        { name=\"Beslan CRP5\", seq=5, x=-148758.112508349994, y=833972.486295029987, radius=1388.6688 },\n        { name=\"Beslan CRP6\", seq=6, x=-150201.924156410008, y=851407.833429889986, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Mozdok",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\mozdok.lua",
+    "lua_block": "    crps = {\n        { name=\"Mozdok CRP1\", seq=1, x=-75102.864364088993, y=839783.845204959973, radius=3703.9296 },\n        { name=\"Mozdok CRP2\", seq=2, x=-78057.630462767003, y=826474.323574639973, radius=2777.3376 },\n        { name=\"Mozdok CRP3\", seq=3, x=-91073.092508403002, y=827986.064546789974, radius=2777.3376 },\n        { name=\"Mozdok CRP4\", seq=4, x=-89292.582429414004, y=842684.278784699971, radius=2777.3376 },\n        { name=\"Mozdok CRP5\", seq=5, x=-84513.826771673994, y=843464.959841880016, radius=1388.6688 },\n        { name=\"Mozdok CRP6\", seq=6, x=-86351.905866677000, y=825254.908866839949, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Nalchik",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\nalchik.lua",
+    "lua_block": "    crps = {\n        { name=\"Nalchik CRP1\", seq=1, x=-126350.419455159994, y=772771.387420500047, radius=3703.9296 },\n        { name=\"Nalchik CRP2\", seq=2, x=-133284.684178989992, y=760340.383077210048, radius=2777.3376 },\n        { name=\"Nalchik CRP3\", seq=3, x=-122032.906246879997, y=750576.616428110050, radius=2777.3376 },\n        { name=\"Nalchik CRP4\", seq=4, x=-114847.629846459997, y=761698.503495589946, radius=2777.3376 },\n        { name=\"Nalchik CRP5\", seq=5, x=-117286.442962250003, y=766352.716076669982, radius=1388.6688 },\n        { name=\"Nalchik CRP6\", seq=6, x=-126643.768923719996, y=753897.169622519985, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Mineralnye Vody",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\mineralnye-vody.lua",
+    "lua_block": "    crps = {\n        { name=\"Mineralnye Vody CRP1\", seq=1, x=-53298.130103347998, y=694447.979018150014, radius=3703.9296 },\n        { name=\"Mineralnye Vody CRP2\", seq=2, x=-59496.512319296999, y=709055.483512039995, radius=2777.3376 },\n        { name=\"Mineralnye Vody CRP3\", seq=3, x=-49997.382944388999, y=715713.864147279994, radius=2777.3376 },\n        { name=\"Mineralnye Vody CRP4\", seq=4, x=-42442.508437130004, y=701741.815642290050, radius=2777.3376 },\n        { name=\"Mineralnye Vody CRP5\", seq=5, x=-46451.262367707997, y=698086.285150369979, radius=1388.6688 },\n        { name=\"Mineralnye Vody CRP6\", seq=6, x=-54443.818817311003, y=714305.725685450016, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Krasnodar-Center",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\krasnodar-center.lua",
+    "lua_block": "    crps = {\n        { name=\"Krasnodar-Center CRP1\", seq=1, x=17927.708764602001, y=358466.031810200016, radius=3703.9296 },\n        { name=\"Krasnodar-Center CRP2\", seq=2, x=17523.423816340000, y=372792.603172349976, radius=2777.3376 },\n        { name=\"Krasnodar-Center CRP3\", seq=3, x=4717.294269042700, y=375186.745980479987, radius=2777.3376 },\n        { name=\"Krasnodar-Center CRP4\", seq=4, x=3716.813841671800, y=360628.473719589994, radius=2777.3376 },\n        { name=\"Krasnodar-Center CRP5\", seq=5, x=9382.463604744300, y=358515.193288979994, radius=1388.6688 },\n        { name=\"Krasnodar-Center CRP6\", seq=6, x=10026.753267509001, y=374556.267060880025, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Sochi-Adler",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\sochi-adler.lua",
+    "lua_block": "    crps = {\n        { name=\"Sochi-Adler CRP1\", seq=1, x=-160945.022381760005, y=450317.497658490029, radius=3703.9296 },\n        { name=\"Sochi-Adler CRP2\", seq=2, x=-156835.130336060014, y=463612.494108440005, radius=2777.3376 },\n        { name=\"Sochi-Adler CRP3\", seq=3, x=-166015.646317650011, y=470743.508470839995, radius=2777.3376 },\n        { name=\"Sochi-Adler CRP4\", seq=4, x=-173739.539199160005, y=460811.749970589997, radius=2777.3376 },\n        { name=\"Sochi-Adler CRP5\", seq=5, x=-169962.067477459990, y=455849.200407519995, radius=1388.6688 },\n        { name=\"Sochi-Adler CRP6\", seq=6, x=-161754.535036560002, y=467932.807755169983, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Maykop-Khanskaya",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\maykop-khanskaya.lua",
+    "lua_block": "    crps = {\n        { name=\"Maykop-Khanskaya CRP1\", seq=1, x=-27365.471902336001, y=446224.658343199990, radius=3703.9296 },\n        { name=\"Maykop-Khanskaya CRP2\", seq=2, x=-17779.520856939002, y=457085.700263989973, radius=2777.3376 },\n        { name=\"Maykop-Khanskaya CRP3\", seq=3, x=-25614.768108535001, y=467392.405864130007, radius=2777.3376 },\n        { name=\"Maykop-Khanskaya CRP4\", seq=4, x=-36189.721176614003, y=458123.486212440010, radius=2777.3376 },\n        { name=\"Maykop-Khanskaya CRP5\", seq=5, x=-33529.809916589998, y=453483.632126879995, radius=1388.6688 },\n        { name=\"Maykop-Khanskaya CRP6\", seq=6, x=-22271.005841939001, y=463117.179025509977, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Krasnodar-Pashkovsky",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\krasnodar-pashkovsky.lua",
+    "lua_block": "    crps = {\n        { name=\"Krasnodar-Pashkovsky CRP1\", seq=1, x=-2100.319102526300, y=389118.242845539993, radius=3703.9296 },\n        { name=\"Krasnodar-Pashkovsky CRP2\", seq=2, x=7003.423067599700, y=395939.633021229994, radius=2777.3376 },\n        { name=\"Krasnodar-Pashkovsky CRP3\", seq=3, x=17514.110041620999, y=389032.531015990011, radius=2777.3376 },\n        { name=\"Krasnodar-Pashkovsky CRP4\", seq=4, x=8983.010082437500, y=379371.603240880009, radius=2777.3376 },\n        { name=\"Krasnodar-Pashkovsky CRP5\", seq=5, x=4008.631484806200, y=382190.106838239997, radius=1388.6688 },\n        { name=\"Krasnodar-Pashkovsky CRP6\", seq=6, x=14293.653232058999, y=393724.496986259997, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Krymsk",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\krymsk.lua",
+    "lua_block": "    crps = {\n        { name=\"Krymsk CRP1\", seq=1, x=-7205.835639801700, y=283690.030426990008, radius=3703.9296 },\n        { name=\"Krymsk CRP2\", seq=2, x=1552.256368226300, y=293852.615614629991, radius=2777.3376 },\n        { name=\"Krymsk CRP3\", seq=3, x=-6613.307563075000, y=304194.416568820016, radius=2777.3376 },\n        { name=\"Krymsk CRP4\", seq=4, x=-16144.059860331001, y=295464.104008529976, radius=2777.3376 },\n        { name=\"Krymsk CRP5\", seq=5, x=-14755.831557863999, y=290456.711175500008, radius=1388.6688 },\n        { name=\"Krymsk CRP6\", seq=6, x=-2452.477815008300, y=300389.073586150014, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Gelendzhik",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\gelendzhik.lua",
+    "lua_block": "    crps = {\n        { name=\"Gelendzhik CRP1\", seq=1, x=-50243.091434866998, y=286975.709827689978, radius=3703.9296 },\n        { name=\"Gelendzhik CRP2\", seq=2, x=-43367.369122538999, y=296637.677736970014, radius=2777.3376 },\n        { name=\"Gelendzhik CRP3\", seq=3, x=-51195.599280795002, y=305696.911264029972, radius=2777.3376 },\n        { name=\"Gelendzhik CRP4\", seq=4, x=-59045.190009026002, y=298842.266808059998, radius=2777.3376 },\n        { name=\"Gelendzhik CRP5\", seq=5, x=-56178.608720816002, y=295055.553461630014, radius=1388.6688 },\n        { name=\"Gelendzhik CRP6\", seq=6, x=-47648.586015658002, y=302345.144738339994, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Novorossiysk",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\novorossiysk.lua",
+    "lua_block": "    crps = {\n        { name=\"Novorossiysk CRP1\", seq=1, x=-41005.491763933998, y=268925.616483330028, radius=3703.9296 },\n        { name=\"Novorossiysk CRP2\", seq=2, x=-33021.973372310000, y=278353.112319379987, radius=2777.3376 },\n        { name=\"Novorossiysk CRP3\", seq=3, x=-40646.677068696001, y=288051.293312970025, radius=2777.3376 },\n        { name=\"Novorossiysk CRP4\", seq=4, x=-48386.441759077003, y=280428.335510550009, radius=2777.3376 },\n        { name=\"Novorossiysk CRP5\", seq=5, x=-46584.891356532004, y=275966.708088040003, radius=1388.6688 },\n        { name=\"Novorossiysk CRP6\", seq=6, x=-36746.062519995998, y=284610.957699169987, radius=1388.6688 },\n    },\n"
+  },
+  {
+    "airfield": "Anapa-Vityazevo",
+    "target_file": "k:\\DCS_ATC\\Mods\\Services\\DCS-ATC\\Scripts\\airfields\\Caucasus\\anapa-vityazevo.lua",
+    "lua_block": "    crps = {\n        { name=\"Anapa-Vityazevo CRP1\", seq=1, x=-6524.660488826100, y=232847.828288530000, radius=3703.9296 },\n        { name=\"Anapa-Vityazevo CRP2\", seq=2, x=1999.750050996200, y=243631.305774059991, radius=2777.3376 },\n        { name=\"Anapa-Vityazevo CRP3\", seq=3, x=-5959.814636253500, y=253921.197272819991, radius=2777.3376 },\n        { name=\"Anapa-Vityazevo CRP4\", seq=4, x=-16966.797236439001, y=244438.381915750011, radius=2777.3376 },\n        { name=\"Anapa-Vityazevo CRP5\", seq=5, x=-14342.511402052000, y=239346.185434579995, radius=1388.6688 },\n        { name=\"Anapa-Vityazevo CRP6\", seq=6, x=-1481.831773063000, y=251045.081747740012, radius=1388.6688 },\n    },\n"
+  }
+]

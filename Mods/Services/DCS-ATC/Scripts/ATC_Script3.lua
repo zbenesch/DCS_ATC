@@ -2,12 +2,13 @@ ATC = ATC or {}
 local _runwaySnapshot = ATC.runways  -- watchdog snapshot for this chunk
 
 -- Constants used by pattern / glideslope logic in this chunk
-local ENTRY_BASE_AGL     = 3000   -- altitude AGL for entry / base leg
+local ENTRY_BASE_AGL     = 4500   -- altitude AGL for entry / base leg
 local FINAL_AGL          = 1500   -- altitude AGL at the final approach point
-local PATTERN_CORNER_NM  = 0.5    -- within this NM of a CRP corner: advance to next
-local PATTERN_CORNER1_NM = 2.0    -- larger capture only for CRP seq1 to avoid conflicting vectors near entry
-local PATTERN_CP5_NM     = 0.5    -- CP5 zone radius (0.5 NM = 1 NM diameter)
-local PATTERN_FINAL_ALT  = 1500   -- ft; after full lap at this altitude -> turn final
+local PATTERN_CORNER_NM  = 2.0    -- within this NM of a CRP corner: advance to next
+local PATTERN_CORNER1_NM = 2.5    -- larger capture only for CRP seq1 to avoid conflicting vectors near entry
+local PATTERN_CP5_NM     = 0.5    -- CP5 zone radius 
+local PATTERN_CP5_MIN_RWY_NM = 1.5 -- minimum CP5 distance from runway/airbase reference
+local PATTERN_FINAL_ALT  = 1500   -- ft; -> turn final
 
 -- Helper functions shared with ATC_Script2 (duplicated here so this chunk is self-contained)
 local function hdgTo(a, b)
@@ -235,6 +236,8 @@ function ATC.checkGlideslopes()
                         local spdKt  = ATC.getSpeedKt(unit)
                         local altFt  = ATC.getAltFt(unit)
                         local spds   = ATC.getApproachSpeeds(unit)
+                        rec.finalCleared = rec.finalCleared or {}
+                        rec.gearReminded = rec.gearReminded or {}
                             local lastT  = rec.lastGuidance[abName] or 0
                             local rwy = ATC.getRunway(abName)
                             local leg = (rwy and ATC.getPatternLeg(unit:getPoint(), abPos, rwy)) or nil
@@ -262,7 +265,7 @@ function ATC.checkGlideslopes()
                                 controllerCall(unitName, abName, controller), spdKt), true, abName, controller)
                             ATC.setPhase(unitName, abName, "goaround")
                             rec.lastGuidance[abName] = now
-                        elseif (now - lastT) >= ATC.config.guidanceInterval then
+                        elseif ph ~= "goaround" and (now - lastT) >= ATC.config.guidanceInterval then
                             local cleared = rec.landingCleared and rec.landingCleared[abName]
                             if cleared and onFinal then
                                 local gs = ATC.getGlideslope(unit, abPos, rwy)
@@ -271,9 +274,14 @@ function ATC.checkGlideslopes()
                                 local altDev = math.abs(gs.altDev or 0)
                                 local maxDev = math.max(speedDev, aoaDev, altDev)
                                 if maxDev > 0.5 then
-                                    ATC.radioMsg(rec.groupId, abPos, "Missed approach, go around!", false, abName, controller)
-                                    ATC.setPhase(unitName, abName, "goaround")
-                                    rec.lastGuidance[abName] = now
+                                    rec.lastGoAround = rec.lastGoAround or {}
+                                    local lastGa = rec.lastGoAround[abName] or 0
+                                    if (now - lastGa) >= 90 then
+                                        ATC.radioMsg(rec.groupId, abPos, "Missed approach, go around!", false, abName, controller)
+                                        rec.lastGoAround[abName] = now
+                                        ATC.setPhase(unitName, abName, "goaround")
+                                        rec.lastGuidance[abName] = now
+                                    end
                                 elseif maxDev > 0.25 then
                                     ATC.radioMsg(rec.groupId, abPos, "Correct your approach: deviation from glideslope.", false, abName, controller)
                                     rec.lastGuidance[abName] = now
@@ -286,7 +294,6 @@ function ATC.checkGlideslopes()
                                         "%s, %s tower, cleared to land, wind %03d at %d, check gear down.",
                                         cs, fieldName, windDir, windSpd),
                                         false, abName, controller)
-                                    rec.finalCleared = rec.finalCleared or {}
                                     rec.finalCleared[abName] = true
                                     rec.lastGuidance[abName] = now
                                 else
@@ -374,17 +381,49 @@ function ATC.getPatternLegs(rwy)
     local baseHdg   = (downHdg + offset + 360) % 360
     return { finalHdg = finalHdg, baseHdg = baseHdg, downwindHdg = downHdg, dir = dir }
 end
+
+local function enforceCp5MinDistance(cp5Pos, runwayPos, rwy)
+    if not cp5Pos or not runwayPos then return cp5Pos end
+    local minM = PATTERN_CP5_MIN_RWY_NM * 1852
+    local dx = cp5Pos.x - runwayPos.x
+    local dz = cp5Pos.z - runwayPos.z
+    local dist = math.sqrt(dx * dx + dz * dz)
+    if dist >= minM then return cp5Pos end
+
+    local ux, uz
+    if dist > 1 then
+        ux = dx / dist
+        uz = dz / dist
+    else
+        local finalTrue = ATC.toTrue((rwy and rwy.hdg) or 0)
+        local rad = math.rad(finalTrue)
+        ux = -math.cos(rad)
+        uz = -math.sin(rad)
+    end
+
+    return {
+        x = runwayPos.x + ux * minM,
+        y = cp5Pos.y,
+        z = runwayPos.z + uz * minM,
+    }
+end
+
 function ATC.getPatternCorners(rwy)
     if not rwy or not rwy.crps then return nil end
     local corners = {}
     for _, crp in ipairs(rwy.crps) do
-        local p = coord.LLtoLO(crp.lat, crp.lon, 0)
-        table.insert(corners, { pos = p, name = crp.name, seq = crp.seq or 99 })
+        local p = nil
+        if type(crp.x) == "number" and type(crp.y) == "number" then
+            p = { x = crp.x, y = 0, z = crp.y }
+        elseif type(crp.lat) == "number" and type(crp.lon) == "number" then
+            p = coord.LLtoLO(crp.lat, crp.lon, 0)
+        end
+        if p then
+            table.insert(corners, { pos = p, name = crp.name, seq = crp.seq or 99, radius = crp.radius })
+        end
     end
     table.sort(corners, function(a, b) return a.seq < b.seq end)
     if #corners >= 4 then
-        local c4 = corners[4]
-        local abPos = Airbase.getByName and rwy and nil
         local airbasePos = nil
         do
             if Airbase and Airbase.getByName and ATC.runways then
@@ -399,25 +438,96 @@ function ATC.getPatternCorners(rwy)
                 end
             end
         end
-        if c4 and c4.pos and airbasePos then
+
+        local hasExplicitCP5 = false
+        for _, c in ipairs(corners) do
+            if c.seq == 5 then
+                c.isCP5 = true
+                if not c.name or c.name == "" then
+                    c.name = "Final approach point"
+                end
+                c.pos = enforceCp5MinDistance(c.pos, airbasePos, rwy)
+                hasExplicitCP5 = true
+            end
+        end
+        if hasExplicitCP5 then
+            -- If CP5 is explicitly provided, ignore any extra CRPs beyond seq 5.
+            local filtered = {}
+            for _, c in ipairs(corners) do
+                local s = tonumber(c.seq) or 99
+                if s <= 5 then table.insert(filtered, c) end
+            end
+            return filtered
+        end
+
+        local c4 = corners[4]
+
+        local centerPos = nil
+        do
+            local sx, sz, n = 0, 0, 0
+            for i = 1, math.min(4, #corners) do
+                local cp = corners[i] and corners[i].pos
+                if cp then
+                    sx = sx + cp.x
+                    sz = sz + cp.z
+                    n = n + 1
+                end
+            end
+            if n > 0 then
+                centerPos = {
+                    x = sx / n,
+                    y = (airbasePos and airbasePos.y) or 0,
+                    z = sz / n,
+                }
+            end
+        end
+        local centerAnchor = centerPos or airbasePos
+        if type(rwy.cp5CenterLat) == "number" and type(rwy.cp5CenterLon) == "number" then
+            local ok, p = pcall(coord.LLtoLO, rwy.cp5CenterLat, rwy.cp5CenterLon, 0)
+            if ok and p then
+                centerAnchor = {
+                    x = p.x,
+                    y = (airbasePos and airbasePos.y) or p.y or 0,
+                    z = p.z,
+                }
+            end
+        end
+
+        if c4 and c4.pos and centerAnchor then
             local finalTrue = ATC.toTrue(rwy.hdg or 0)
             local rad = math.rad(finalTrue)
             local ux, uz = math.cos(rad), math.sin(rad)
-            local vx = c4.pos.x - airbasePos.x
-            local vz = c4.pos.z - airbasePos.z
+            local vx = c4.pos.x - centerAnchor.x
+            local vz = c4.pos.z - centerAnchor.z
             local t = (vx * ux) + (vz * uz)
+            local cp5Pos = {
+                x = centerAnchor.x + t * ux,
+                y = centerAnchor.y,
+                z = centerAnchor.z + t * uz,
+            }
+            cp5Pos = enforceCp5MinDistance(cp5Pos, airbasePos, rwy)
             local cp5 = {
-                pos = {
-                    x = airbasePos.x + t * ux,
-                    y = airbasePos.y,
-                    z = airbasePos.z + t * uz,
-                },
+                pos = cp5Pos,
                 name = "Final approach point",
                 seq = 5,
                 isCP5 = true,
             }
             table.insert(corners, cp5)
         end
+    end
+    -- Log corners for debugging: index, seq, name, isCP5
+    do
+        local abName = nil
+        if ATC and ATC.runways then
+            for name, rr in pairs(ATC.runways) do
+                if rr == rwy then abName = name; break end
+            end
+        end
+        local parts = {}
+        for i, c in ipairs(corners) do
+            parts[#parts+1] = string.format("%d(seq=%s,name=%s,isCP5=%s)", i, tostring(c.seq or 'nil'), tostring(c.name or 'nil'), tostring(c.isCP5 and true or false))
+        end
+        ATC.log(string.format("PATCORNERS %s -> %s", tostring(abName or 'unknown'), table.concat(parts, ", ") ))
     end
     return corners
 end
@@ -467,7 +577,46 @@ end
 function ATC.freeStackLevel(unitName, abName)
     ATC.freePatternSlot(unitName, abName)
 end
-local function getPatternFloorAlt(rwy)
+local function getPatternFloorAlt(rwy, crp)
+    -- Assign CRP altitudes per user spec:
+    -- CRP1: terrain MSL + 4500 (rounded up to 100)
+    -- CRP2: terrain MSL + 3500 (rounded up to 100)
+    -- CRP3: terrain MSL + 2500 (rounded up to 100)
+    -- CRP4: terrain MSL + 2000 (rounded up to 100)
+    -- CRP5: 1500 ft AGL (above terrain at CRP5), always
+    if crp and crp.pos and crp.seq then
+        local elevM = 0
+        if land and land.getHeight then
+            local ok, h = pcall(land.getHeight, { x = crp.pos.x, y = crp.pos.z })
+            if ok and type(h) == "number" then
+                elevM = h
+            end
+            -- Debug log for CRP coordinates and elevation
+            ATC.log(string.format(
+                "CRP DEBUG: %s seq=%d x=%.2f z=%.2f elevM=%.2f",
+                crp.name or "?", crp.seq or -1, crp.pos.x or 0, crp.pos.z or 0, elevM or 0
+            ))
+        end
+        local elevFt = math.floor(ATC.mToFt and ATC.mToFt(elevM) or (elevM * 3.28084))
+        local seq = tonumber(crp.seq)
+        local alt
+        if seq == 1 then
+            alt = elevFt + 4500
+        elseif seq == 2 then
+            alt = elevFt + 3500
+        elseif seq == 3 then
+            alt = elevFt + 2500
+        elseif seq == 4 then
+            alt = elevFt + 2000
+        elseif seq == 5 then
+            alt = elevFt + 1500 -- 1500 AGL for CRP5
+        else
+            alt = elevFt + 4500 -- fallback for any extra CRPs
+        end
+        -- Round up to nearest 100
+        alt = math.ceil(alt / 100) * 100
+        return alt
+    end
     local alts = rwy and rwy.patternAlts
     if alts and #alts > 0 then return alts[#alts] end
     return PATTERN_FINAL_ALT
@@ -486,8 +635,8 @@ local function getOccupiedPatternAlt(otherName, rec, abName, rwy)
     return nil
 end
 
-local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy)
-    local floorAlt = getPatternFloorAlt(rwy)
+local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy, crp)
+    local floorAlt = getPatternFloorAlt(rwy, crp)
     local highestBelow = nil
     for otherName, otherRec in pairs(ATC.state.aircraft) do
         if otherName ~= unitName then
@@ -652,12 +801,14 @@ function ATC.initPatternEntry(unitName, airbaseName)
     local gate = { altFt = slotAlt, noSpeed = true }
     if distNM > ctrlNm then
         rec.patternCornerIdx[airbaseName] = 1
+        ATC.log(string.format("PATIDX SET: %-10s @%s  -> idx=%d (init)", unitName, airbaseName, rec.patternCornerIdx[airbaseName]))
         local hdg = hdgTo(uPos, corners[1].pos)
         ATC.log(string.format("INIT  %-10s @%s  OUTSIDE(%.1fNM) -> corner1(%s) hdg=%.0f alt=%d",
             unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
         ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, timer.getTime(), airbaseName, corners[1].pos, corners[1].name)
     else
         rec.patternCornerIdx[airbaseName] = 1
+        ATC.log(string.format("PATIDX SET: %-10s @%s  -> idx=%d (init-inside)", unitName, airbaseName, rec.patternCornerIdx[airbaseName]))
         local hdg = hdgTo(uPos, corners[1].pos)
         ATC.log(string.format("INIT  %-10s @%s  INSIDE(%.1fNM) -> corner1(%s) hdg=%.0f alt=%d",
             unitName, airbaseName, distNM, corners[1].name, hdg, slotAlt))
@@ -667,12 +818,20 @@ end
 local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
     local patAlt    = rec.patternAlt[abName]
     local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
-    local floorAlt  = getPatternFloorAlt(rwy)
+    if cornerIdx == 1 then
+        rec.report15Done = rec.report15Done or {}
+        rec.report15ReminderSent = rec.report15ReminderSent or {}
+        rec.report15Done[abName] = true
+        rec.report15ReminderSent[abName] = true
+    end
     local nextIdx = (cornerIdx % #corners) + 1
-    local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy)
-    local nextAlt = patAlt
+    local crp = corners[cornerIdx]
+    local nextCrp = corners[nextIdx]
+    local floorAlt = getPatternFloorAlt(rwy, crp)
+    local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy, crp)
+    local nextAlt = getPatternFloorAlt(rwy, nextCrp)
     local gate = { altFt = patAlt, noSpeed = true }
-    local isCp5Target = corners[nextIdx] and corners[nextIdx].isCP5
+    local isCp5Target = nextCrp and nextCrp.isCP5
     local currSpd = ATC.getSpeedKt(unit)
     if (nextIdx == 2 or nextIdx == 3) and currSpd and currSpd > 305 then
         gate.noSpeed = false
@@ -683,30 +842,62 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
         gate.speedKt = 250
         gate.reduceOnly = true
     end
-    if not isCp5Target and patAlt > protectedAlt then
-        nextAlt = math.max(protectedAlt, patAlt - 1000)
+    -- Always descend to the next CRP's computed altitude, but never below protectedAlt
+    if nextAlt < patAlt then
+        nextAlt = math.max(protectedAlt, nextAlt)
     end
-    if isCp5Target then
-        gate.noAltitude = true
-    end
-    if corners[cornerIdx] and corners[cornerIdx].isCP5 then
+    -- If we are currently at CP5 (we've reached the CP5 report), issue final
+    -- and handoff to tower. This ensures FINAL is only issued after arrival at CP5.
+    if crp and crp.isCP5 then
         local inboundHdg = ATC.toTrue(rwy.hdg) % 360
-        local finalGate = { altFt = patAlt, noSpeed = true }
+        local cp5Alt = getPatternFloorAlt(rwy, crp)
+        local finalGate = { altFt = cp5Alt, noSpeed = true }
         ATC.log(string.format("FINAL %-10s @%s  cp5 reached -> final hdg=%.0f alt=%d",
             unitName, abName, inboundHdg, finalGate.altFt))
-        ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName, abPos, nil)
+        local spokenField = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(abName) or abName
+        local cs = unit:getCallsign() or unitName or "Unknown"
+        local towerFreq = rwy and rwy.frequencies and rwy.frequencies.tower
+        local freqStr = towerFreq and string.format("%.3f MHz", towerFreq.mhz) or "tower frequency"
+        local finalMagHdg = ATC.fmtHdg(ATC.toMag(inboundHdg))
+        rec.handedOffToTower = rec.handedOffToTower or {}
+        if not rec.handedOffToTower[abName] then
+            ATC.radioMsg(rec.groupId, abPos, string.format(
+                "%sTurn final heading %s, maintain %d ft. Contact %s Tower on %s. Report final.",
+                controllerCall(unitName, abName, "Approach"), finalMagHdg, finalGate.altFt, spokenField, freqStr),
+                false, abName, "Approach")
+            ATC.msg(rec.groupId, string.format(
+                "%s, switching to %s Tower, have a great day.",
+                cs, spokenField), true, abName, "Approach")
+        end
+        rec.lastVector[abName] = now
         rec.towerHandoffReady = rec.towerHandoffReady or {}
         rec.towerCheckedIn = rec.towerCheckedIn or {}
         rec.towerHandoffReady[abName] = true
         rec.towerCheckedIn[abName] = false
-        rec.handedOffToTower = rec.handedOffToTower or {}
         rec.handedOffToTower[abName] = true
         ATC.buildFullMenu(unitName)
         rec.patternAlt[abName] = nil
         rec.patternCornerIdx[abName] = nil
+        ATC.log(string.format("PATIDX CLEARED: %-10s @%s  -> nil (final/clear)", unitName, abName))
         ATC.setPhase(unitName, abName, "approach")
         if not rec.holdPhase then rec.holdPhase = {} end
         rec.holdPhase[abName] = "pattern"
+        return true
+    end
+
+    if nextCrp and nextCrp.isCP5 then
+        -- Vector to CP5 instead of immediately switching to final.
+        -- Use CP5's computed altitude (MSL+1500) for the vector instruction.
+        local cp5Alt = getPatternFloorAlt(rwy, nextCrp)
+        gate.altFt = cp5Alt
+        rec.patternCornerIdx[abName] = nextIdx
+        ATC.log(string.format("PATIDX ADV: %-10s @%s  -> idx=%d (advance to CP5)", unitName, abName, nextIdx))
+        local uPos = unit:getPoint()
+        local newTarget = nextCrp
+        local newHdg = hdgTo(uPos, newTarget.pos)
+        ATC.log(string.format("TURN  %-10s @%s  -> corner%d(%s) hdg=%.0f alt=%d",
+            unitName, abName, nextIdx, newTarget.name, newHdg, gate.altFt))
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, newHdg, now, abName, newTarget.pos, newTarget.name)
         return true
     end
     if nextIdx == 1 then
@@ -719,6 +910,7 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
             ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName, abPos, nil)
             rec.patternAlt[abName] = nil
             rec.patternCornerIdx[abName] = nil
+            ATC.log(string.format("PATIDX CLEARED: %-10s @%s  -> nil (handoff)", unitName, abName))
             ATC.setPhase(unitName, abName, "approach")
             if not rec.holdPhase then rec.holdPhase = {} end
             rec.holdPhase[abName] = "pattern"
@@ -739,6 +931,7 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
             unitName, abName, patAlt))
     end
     rec.patternCornerIdx[abName] = nextIdx
+    ATC.log(string.format("PATIDX ADV: %-10s @%s  -> idx=%d (advance)", unitName, abName, nextIdx))
     local uPos      = unit:getPoint()
     local newTarget = corners[nextIdx]
     local newHdg    = hdgTo(uPos, newTarget.pos)
@@ -764,13 +957,20 @@ function ATC.handlePatternReport(unitName, abName)
     local dx = target.pos.x - uPos.x
     local dz = target.pos.z - uPos.z
     local distToCorner = math.sqrt(dx * dx + dz * dz) / 1852
-    local baseTolerance = math.max(PATTERN_CORNER_NM, 1.5)
-    local reportTolerance = baseTolerance
-    if cornerIdx == 1 then
-        reportTolerance = math.max(baseTolerance, PATTERN_CORNER1_NM)
+    -- Use per-CRP radius if available, else fallback to old logic
+    local reportTolerance
+    if target and target.radius then
+        reportTolerance = target.radius / 1852 -- meters to NM
+    elseif cornerIdx == 1 then
+        reportTolerance = math.max(PATTERN_CORNER_NM, PATTERN_CORNER1_NM)
     elseif target and target.isCP5 then
         reportTolerance = PATTERN_CP5_NM
+    else
+        reportTolerance = PATTERN_CORNER_NM
     end
+    -- Log the report check values to help debug missed CP5 reports
+    ATC.log(string.format("RPTCHK %-10s @%s  corner=%d(%s) dist=%.2fNM tolerance=%.2fNM radius=%s",
+        unitName, abName, cornerIdx, target.name, distToCorner, reportTolerance, tostring(target.radius or 'nil')))
     if distToCorner > reportTolerance then return false end
     local abPos = ATC.getAirbasePos(ab)
     ATC.log(string.format("RPTCRP %-10s @%s  corner=%d(%s) dist=%.1fNM -> advance",
@@ -819,10 +1019,14 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     elseif target and target.isCP5 then
         reportTolerance = PATTERN_CP5_NM
     end
-    local nearestIdx = ATC.nearestCornerIdx(corners, uPos)
     local nextIdx = (cornerIdx % #corners) + 1
-    local allowNearestShortcut = not (target and target.isCP5)
-    if distToCorner <= reportTolerance or (allowNearestShortcut and nearestIdx == nextIdx) then
+    local nextTarget = corners[nextIdx]
+    -- Diagnostic log: show autonomous check values (dist to current CRP)
+    ATC.log(string.format("RPTCHK_AUTO %-10s @%s  corner=%d(%s) distToCorner=%.2fNM reportTolerance=%.2fNM radius=%s",
+        unitName, abName, cornerIdx, target.name, distToCorner, reportTolerance, tostring(target.radius or 'nil')))
+    -- Removed nearest-corner shortcut: only advance when within the
+    -- configured report tolerance for the current target CRP.
+    if distToCorner <= reportTolerance then
         advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
     end
 end

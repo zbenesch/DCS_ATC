@@ -8,11 +8,13 @@
         departure= { mhz=124.200, hz=124200000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
+    
     crps = {
-        { name="Kobuleti NW", seq=1, lat=42.018767, lon=41.752067 },
-        { name="Kobuleti NE", seq=2, lat=42.000733, lon=42.001550 },
-        { name="Kobuleti SE", seq=3, lat=41.909883, lon=42.007750 },
-        { name="Kobuleti SW", seq=4, lat=41.823583, lon=41.772667 },
+        { name="Kobuleti CRP1", seq=1, x=-312731.049518799991, y=626199.574710189947, radius=3703.9296 },
+        { name="Kobuleti CRP2", seq=2, x=-309353.785705289978, y=637369.616329160053, radius=2777.3376 },
+        { name="Kobuleti CRP3", seq=3, x=-320630.636335020012, y=645683.037872600020, radius=2777.3376 },
+        { name="Kobuleti CRP4", seq=4, x=-326755.007846880006, y=630475.693059989950, radius=2777.3376 },
+        { name="Kobuleti CRP5", seq=5, x=-322120.473888119974, y=627590.896073860000, radius=1388.6688 },
+        { name="Kobuleti CRP6", seq=6, x=-315935.397207310016, y=643390.919436909957, radius=1388.6688 },
     },
-    chart = "Charts/pages/page_14.png"
 }

@@ -62,6 +62,7 @@ $Voices = [ordered]@{
     "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel - British male, broadcaster
     "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam   - American male, firm
     "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice  - British female, professional
+    "gary"  = "QLOrGSLtlFUlfQRSaOtQ"   # Gary  - Australian male, narrator
 }
 
 # Phrase frequency mapping: token-name -> frequency
@@ -328,7 +329,6 @@ $Phrases = [ordered]@{
     "halab"      = "halab"
     "taftanaz"   = "taftanaz"
     "ramat"      = "ramat"
-    "david"      = "david"
     "ovda"       = "ovda"
     "eilat"      = "eilat"
     "haifa"      = "haifa"

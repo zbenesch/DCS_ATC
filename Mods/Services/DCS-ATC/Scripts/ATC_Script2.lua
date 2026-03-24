@@ -1,3 +1,44 @@
+-- Telemetry logging utility
+local function logAircraftTelemetry(unitName, airbaseName)
+    local unit = Unit.getByName(unitName)
+    if not unit then return end
+    local pos = unit:getPoint()
+    local alt = ATC.getAltAglFt(unit)
+    local spd = ATC.getSpeedKt(unit)
+    local hdg = (unit.getHeading and unit:getHeading()) or 0
+    local aoa = (unit.getAngleOfAttack and unit:getAngleOfAttack()) or 0
+    local t = timer.getTime()
+    local logDir = lfs.writedir() .. "/DCS-ATC-Telemetry/"
+    local logFile = logDir .. string.format("%s_%s.log", unitName, airbaseName)
+    -- Ensure directory exists
+    lfs.mkdir(logDir)
+    local f = io.open(logFile, "a")
+    if f then
+        f:write(string.format("%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n", t, alt or 0, spd or 0, hdg or 0, aoa or 0, pos and pos.y or 0))
+        f:close()
+    end
+end
+
+-- Periodic telemetry logger for all aircraft in inbound/landing
+local function scheduleTelemetryLogging()
+    for unitName, rec in pairs(ATC.state.aircraft) do
+        if rec and rec.phases then
+            for abName, phase in pairs(rec.phases) do
+                if phase == "inbound" or phase == "landing" or phase == "approach" then
+                    logAircraftTelemetry(unitName, abName)
+                end
+            end
+        end
+    end
+    -- Schedule next log in 5 seconds
+    timer.scheduleFunction(function() scheduleTelemetryLogging() return nil end, nil, timer.getTime() + 5)
+end
+
+-- Start telemetry logging on sim start
+if not ATC._telemetryLoggingStarted then
+    ATC._telemetryLoggingStarted = true
+    scheduleTelemetryLogging()
+end
 ATC = ATC or {}
 local function formatControllerFreq(rwy, controllerName)
     local key = controllerName and string.lower(controllerName) or nil
@@ -53,6 +94,7 @@ function ATC.onVoiceDebugCheck(arg)
             radioParts[#radioParts + 1] = string.format("R%d=%.3f", idx, f)
         end
     end
+    local hasRadioData = (#radioParts > 0)
     local radioText = (#radioParts > 0) and table.concat(radioParts, ", ") or "none"
 
     local lines = { "[ATC DEBUG] Voice check for " .. airbaseName, "Radios: " .. radioText }
@@ -60,8 +102,12 @@ function ATC.onVoiceDebugCheck(arg)
     for _, role in ipairs(roles) do
         local freq = rwy and rwy.frequencies and rwy.frequencies[role]
         if freq and freq.mhz then
-            local ok = ATC.isOnFrequency(unitName, airbaseName, role)
-            lines[#lines + 1] = string.format("%s %.3f MHz -> %s", role:upper(), freq.mhz, ok and "TUNED" or "NOT TUNED")
+            if not hasRadioData then
+                lines[#lines + 1] = string.format("%s %.3f MHz -> NO RADIO DATA", role:upper(), freq.mhz)
+            else
+                local ok = ATC.isOnFrequency(unitName, airbaseName, role, { allowNoRadioBypass = false })
+                lines[#lines + 1] = string.format("%s %.3f MHz -> %s", role:upper(), freq.mhz, ok and "TUNED" or "NOT TUNED")
+            end
         else
             lines[#lines + 1] = string.format("%s (missing)", role:upper())
         end
@@ -86,6 +132,34 @@ local function formatRangeText(unitName, radiusM)
     else
         return string.format("%d nm", nearNM)
     end
+end
+
+local function getMissionQnhHpa()
+    local weather = env and env.mission and env.mission.weather
+    local qnh = weather and weather.qnh
+    if type(qnh) ~= "number" then
+        return 1013.25
+    end
+    if qnh > 2000 then
+        return qnh / 100.0
+    end
+    if qnh > 200 then
+        return qnh * 1.33322
+    end
+    if qnh > 800 then
+        return qnh
+    end
+    return 1013.25
+end
+
+local function getQfeHpa(rwy)
+    local qnhHpa = getMissionQnhHpa()
+    local elevFt = (rwy and rwy.elevation) or 0
+    local elevM = elevFt * 0.3048
+    local ratio = 1.0 - (elevM / 44330.0)
+    if ratio < 0.01 then ratio = 0.01 end
+    local qfe = qnhHpa * (ratio ^ 5.255)
+    return math.floor(qfe + 0.5)
 end
 
 local function isArrivalEngaged(rec, airbaseName, phase)
@@ -149,9 +223,10 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         local towerReady = rec.towerHandoffReady and rec.towerHandoffReady[abName]
         local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[abName]
         if towerReady and not towerCheckedIn then
-            missionCommands.addCommandForGroup(gid, "Handoff to Tower",
+            missionCommands.addCommandForGroup(gid, "Contact Tower",
                 fieldMenu, function(a) ATC.onHandoffToTower(a) end, arg)
-        elseif towerReady and towerCheckedIn then
+        end
+        if towerReady and towerCheckedIn then
             missionCommands.addCommandForGroup(gid, "Request Landing",
                 fieldMenu, function(a) ATC.onRequestLanding(a) end, arg)
         end
@@ -173,6 +248,9 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     else
+        local safeUnitName = tostring(unitName or 'nil')
+        local safeAirbaseName = tostring((arg and arg.airbaseName) or 'nil')
+        ATC.log(string.format("MENU: Adding 'Request Landing / Inbound' for unit=%s airbase=%s", safeUnitName, safeAirbaseName))
         missionCommands.addCommandForGroup(gid, "Request Landing / Inbound",
             fieldMenu, function(a) ATC.onInboundRequest(a) end, arg)
         missionCommands.addCommandForGroup(gid, "Report Position",
@@ -184,8 +262,14 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     end
+        local safeUnitName2 = tostring(unitName or 'nil')
+        local safeAbName = tostring(abName or 'nil')
+        local safeInAir = tostring(inAir or 'nil')
+        local safeDistM = tonumber(distM) or -1
+        ATC.log(string.format("BUILD_FIELD_MENU: unit=%s ab=%s inAir=%s distM=%.1f", safeUnitName2, safeAbName, safeInAir, safeDistM))
 end
 function ATC.buildFullMenu(unitName)
+    ATC.log("BUILD_FULL_MENU: called for unit=" .. tostring(unitName))
     local rec = ATC.state.aircraft[unitName]
     if not rec then
         ATC.log("MENU  buildFullMenu: no rec for " .. tostring(unitName))
@@ -399,18 +483,21 @@ end
 function ATC.onInboundRequest(arg)
     local unitName    = arg.unitName
     local airbaseName = arg.airbaseName
+    local safeUnitName3 = tostring(unitName or 'nil')
+    local safeAirbaseName2 = tostring(airbaseName or 'nil')
+    ATC.log(string.format("INBD_HANDLER: called for unit=%s airbase=%s", safeUnitName3, safeAirbaseName2))
     local rec  = ATC.state.aircraft[unitName]
-    if not rec then return end
+    if not rec then ATC.log("INBD_HANDLER: no rec for unit " .. tostring(unitName)); return end
     if not ATC._timersStarted then ATC.onSimStart() end
     local unit = Unit.getByName(unitName)
-    if not ATC.isPlayer(unit) then return end
+    if not ATC.isPlayer(unit) then ATC.log("INBD_HANDLER: not a player unit"); return end
     
     -- Frequency check: Player must be on Approach frequency (with cooldown to silence duplicates)
     if not ATC.isOnFrequency(unitName, airbaseName, "approach") then
+        ATC.log("INBD_HANDLER: not on approach frequency")
         local now = timer.getTime()
         rec.lastFreqRejection = rec.lastFreqRejection or {}
         local lastRejAt = rec.lastFreqRejection["approach"] or 0
-        
         if (now - lastRejAt) > 10.0 then
             local rwy = ATC.getRunway(airbaseName)
             local approachFreq = rwy and rwy.frequencies and rwy.frequencies["approach"] and rwy.frequencies["approach"].mhz
@@ -433,8 +520,11 @@ function ATC.onInboundRequest(arg)
     local fs     = ATC.getFieldState(airbaseName)
     local ab     = Airbase.getByName(airbaseName)
     local distNM = ATC.distUnitToBase(unit, ab)
-    local altFt  = ATC.getAltFt(unit)
+    local altFt  = ATC.getAltAglFt(unit)
     local spokenField = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+    local safePatternCornerIdx = tostring((rec.patternCornerIdx and rec.patternCornerIdx[airbaseName]) or 'nil')
+    local safePhases = tostring((rec.phases and rec.phases[airbaseName]) or 'nil')
+    ATC.log(string.format("INBD_HANDLER: state: patternCornerIdx=%s, phases=%s", safePatternCornerIdx, safePhases))
     rec.report15Done = rec.report15Done or {}
     rec.report15ReminderSent = rec.report15ReminderSent or {}
     rec.towerHandoffReady = rec.towerHandoffReady or {}
@@ -464,80 +554,142 @@ function ATC.onInboundRequest(arg)
     local abPos = ATC.getAirbasePos(ab)
     local uPos = unit:getPoint()
     local bearingText = (abPos and uPos and ATC.getBearingText(abPos, uPos)) or nil
+    local safeCorners = corners and #corners or 0
+    ATC.log(string.format("INBD_HANDLER: corners=%d", safeCorners))
     do
         local rwType = type(ATC.runways)
         local rwCount = (rwType == "table") and (function() local n=0; for _ in pairs(ATC.runways) do n=n+1 end; return n end)() or 0
         local rwHit   = (rwType == "table") and tostring(ATC.runways[airbaseName] ~= nil) or "N/A"
+        local safeUnitName4 = tostring(unitName or 'nil')
+        local safeAirbaseName3 = tostring(airbaseName or 'nil')
+        local safeRwType = tostring(rwType or 'nil')
+        local safeRwCount = tonumber(rwCount) or 0
+        local safeRwHit = tostring(rwHit or 'nil')
+        local safeRwy = rwy and "ok" or "NIL"
+        local safeCorners2 = corners and tostring(#corners) or "NIL"
+        local safeDistStr = tostring(distStr or 'nil')
         ATC.log(string.format("INBD  %-10s @%s  runways=%s(keys=%d) hit=%s  rwy=%s  corners=%s  dist=%s",
-            unitName, airbaseName,
-            rwType, rwCount, rwHit,
-            rwy and "ok" or "NIL",
-            corners and tostring(#corners) or "NIL",
-            distStr))
+            safeUnitName4, safeAirbaseName3,
+            safeRwType, safeRwCount, safeRwHit,
+            safeRwy,
+            safeCorners2,
+            safeDistStr))
     end
-    if corners then
-        local ctrlNm  = rwy.ctrlZoneNm or 8
+    if corners and #corners > 0 then
+        local ctrlNm  = (rwy and rwy.ctrlZoneNm) or 8
         local slotAlt = ATC.assignPatternSlot(unitName, airbaseName)
         rec.patternAlt[airbaseName]       = slotAlt
         rec.lastVector[airbaseName]       = timer.getTime()
-        local targetCorner, targetIdx
-        if not distNM or distNM > ctrlNm then
-            targetIdx    = 1
-            targetCorner = corners[1]
-        else
-            targetIdx     = 1
-            targetCorner  = corners[1]
+        -- Always start at CRP1 on inbound if not set or out of bounds
+        local idx = rec.patternCornerIdx[airbaseName]
+        if not idx or idx < 1 or idx > #corners then
+            idx = 1
+            rec.patternCornerIdx[airbaseName] = 1
         end
-        rec.patternCornerIdx[airbaseName] = targetIdx
-        local trueHdg = hdgTo(uPos, targetCorner.pos)
-        local magHdg  = ATC.roundHdg(ATC.toMag(trueHdg))
-        local legDistNm = ATC.mToNM(ATC.distVec3H(uPos, targetCorner.pos))
-        local turnDir
-        local vel = unit:getVelocity()
-        if vel then
-            local currHdg = math.deg(math.atan2(vel.z, vel.x))
-            if currHdg < 0 then currHdg = currHdg + 360 end
-            local diff = angleDiff(currHdg, trueHdg)
-            if math.abs(diff) > 45 then
-                turnDir = diff > 0 and "Turn RIGHT" or "Turn LEFT"
+        local currCRP = corners[idx]
+        -- If close to current CRP, increment to next (but never skip CRP5)
+        if currCRP and currCRP.pos and uPos and ATC.mToNM(ATC.distVec3H(uPos, currCRP.pos)) < 1.0 and idx < #corners then
+            idx = idx + 1
+            rec.patternCornerIdx[airbaseName] = idx
+            currCRP = corners[idx]
+        end
+        -- If at CRP5 (seq==5 or marked isCP5), next vector is to final
+        local currSeq = currCRP and currCRP.seq
+        ATC.log(string.format("INBD_DEBUG: idx=%d currSeq=%s currName=%s", idx, tostring(currSeq or 'nil'), tostring(currCRP and currCRP.name or 'nil')))
+        if currCRP and (currCRP.isCP5 or currCRP.seq == 5) then
+            local rwyPos = abPos
+            local trueHdg = hdgTo(uPos, rwyPos)
+            local magHdg  = ATC.roundHdg(ATC.toMag(trueHdg))
+            local legDistNm = ATC.mToNM(ATC.distVec3H(uPos, rwyPos))
+            local turnDir
+            local vel = unit:getVelocity()
+            if vel then
+                local currHdg = math.deg(math.atan2(vel.z, vel.x))
+                if currHdg < 0 then currHdg = currHdg + 360 end
+                local diff = angleDiff(currHdg, trueHdg)
+                if math.abs(diff) > 45 then
+                    turnDir = diff > 0 and "Turn RIGHT" or "Turn LEFT"
+                else
+                    turnDir = "Fly"
+                end
             else
                 turnDir = "Fly"
             end
+            firstVectorLine = string.format(
+                "\n%s final heading %s for %.1f NM, %s %d ft. Contact tower.",
+                turnDir, ATC.fmtHdg(magHdg),
+                legDistNm,
+                (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
+                slotAlt)
+            firstVectorVoice = firstVectorLine
+            ATC.log(string.format("INBD  %-10s @%s  FINAL vector: trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
+                unitName, airbaseName, trueHdg, magHdg, slotAlt, firstVectorLine))
         else
-            turnDir = "Fly"
+            -- Vector to current CRP
+            local trueHdg = hdgTo(uPos, currCRP.pos)
+            local magHdg  = ATC.roundHdg(ATC.toMag(trueHdg))
+            local legDistNm = ATC.mToNM(ATC.distVec3H(uPos, currCRP.pos))
+            local turnDir
+            local vel = unit:getVelocity()
+            if vel then
+                local currHdg = math.deg(math.atan2(vel.z, vel.x))
+                if currHdg < 0 then currHdg = currHdg + 360 end
+                local diff = angleDiff(currHdg, trueHdg)
+                if math.abs(diff) > 45 then
+                    turnDir = diff > 0 and "Turn RIGHT" or "Turn LEFT"
+                else
+                    turnDir = "Fly"
+                end
+            else
+                turnDir = "Fly"
+            end
+            firstVectorLine = string.format(
+                "\n%s heading %s for %.1f NM, %s %d ft. Report next CRP.",
+                turnDir, ATC.fmtHdg(magHdg),
+                legDistNm,
+                (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
+                slotAlt)
+            firstVectorVoice = firstVectorLine
+            ATC.log(string.format("INBD  %-10s @%s  CRP=%d(%s) trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
+                unitName, airbaseName, idx, currCRP.name, trueHdg, magHdg, slotAlt, firstVectorLine))
         end
-        firstVectorLine = string.format(
-            "\n%s heading %s for %.1f NM, %s %d ft. Report 15 NM from %s.",
-            turnDir, ATC.fmtHdg(magHdg),
-            legDistNm,
-            (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
-            slotAlt, spokenField)
-        firstVectorVoice = string.format(
-            "\n%s heading %s for %.1f NM, %s %d ft. Report 15 NM from %s.",
-            turnDir, ATC.fmtHdg(magHdg),
-            legDistNm,
-            (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
-            slotAlt, spokenField)
-        ATC.log(string.format("INBD  %-10s @%s  corner=%d(%s) trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
-            unitName, airbaseName, targetIdx, targetCorner.name, trueHdg, magHdg, slotAlt, firstVectorLine))
+    else
+        firstVectorLine = "\nUnable to provide pattern vector: no pattern corners defined."
+        firstVectorVoice = firstVectorLine
+        ATC.log(string.format("INBD  %-10s @%s  ERROR: No pattern corners for runway.", unitName, airbaseName))
+    end
+    local qfeHpa = getQfeHpa(rwy)
+    local qfeInHg = qfeHpa * 0.02953
+    local isRussian = isRussianAircraft(unitName)
+    local qfeText, qfeVoice
+    if isRussian then
+        qfeText = string.format("QFE %d.", qfeHpa)
+        qfeVoice = string.format("QFE %d.", qfeHpa)
+    else
+        qfeText = string.format("QFE %.2f.", qfeInHg)
+        qfeVoice = string.format("QFE %.2f.", qfeInHg)
     end
     local response = string.format(
         "%s"
         .. "Radar contact. You are %s %s of %s.\n"
+        .. "%s\n"
         .. "You are number %s for landing.%s",
         greeting,
         distStr,
         bearingText or "out",
         spokenField,
+        qfeText,
         ATC.sequenceNumber(seqN),
         firstVectorLine)
     local responseVoice = string.format(
         "%s"
         .. "Radar contact. %s out at %s.\n"
+        .. "%s\n"
         .. "You are number %s for landing.%s",
         greeting,
         distStr,
         altStr,
+        qfeVoice,
         ATC.sequenceNumber(seqN),
         firstVectorVoice)
     ATC.setPhase(unitName, airbaseName, "inbound")
@@ -547,7 +699,8 @@ function ATC.onInboundRequest(arg)
     local initialCallVoice = string.format(
         "%s approach, %s inbound for landing.\n%s at %s.",
         spokenField, cs, distStr, altStr)
-    ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach")
+    -- Suppress voice for pilot's initial call
+    ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach", true)
     local introDur = math.max(ATC.ttsDuration(initialCallVoice), 3)
     local t1       = timer.getTime() + introDur + 1.5
     local respDur  = ATC.ttsDuration(responseVoice)
@@ -574,7 +727,7 @@ function ATC.onInboundRequest(arg)
                 ATC.initPatternEntry(p.unitName, p.airbaseName)
             end
         end)
-        if not ok then trigger.action.outText("[DCS-ATC] initPatternEntry ERROR: " .. tostring(err), 30) end
+        if not ok then ATC.log("initPatternEntry ERROR: " .. tostring(err)) end
         return nil
     end, { unitName=unitName, airbaseName=airbaseName }, t1 + respDur + 0.5)
     timer.scheduleFunction(function(p)
@@ -587,7 +740,7 @@ function ATC.onInboundRequest(arg)
                 ATC.checkAndClearNext(p.airbaseName)
             end
         end)
-        if not ok then trigger.action.outText("[DCS-ATC] clearNext ERROR: " .. tostring(err), 30) end
+        if not ok then ATC.log("clearNext ERROR: " .. tostring(err)) end
         return nil
     end, { airbaseName=airbaseName }, t1 + respDur + 6)
 end
@@ -626,10 +779,11 @@ function ATC.onHandoffToTower(arg)
     rec.towerCheckedIn[airbaseName] = true
     rec.handedOffToTower = rec.handedOffToTower or {}
     rec.handedOffToTower[airbaseName] = true
-    ATC.msg(rec.groupId, string.format(
-        "%s, switching to %s Tower on %s.\nGood day, Approach.",
-        cs, fieldName, freqStr))
-    ATC.buildFullMenu(unitName)
+    local ab = Airbase.getByName(airbaseName)
+    local abPos = ab and ATC.getAirbasePos(ab)
+    ATC.radioMsg(rec.groupId, abPos, string.format(
+        "%s, %s Tower, radar contact on %s. Report final.",
+        cs, fieldName, freqStr), false, airbaseName, "Tower")
 end
 
 function ATC.onRequestLanding(arg)
@@ -639,6 +793,15 @@ function ATC.onRequestLanding(arg)
     if not rec then return end
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
+
+    -- If tower handoff is pending, perform tower contact first.
+    local towerReady = rec.towerHandoffReady and rec.towerHandoffReady[airbaseName]
+    local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[airbaseName]
+    if towerReady and not towerCheckedIn then
+        ATC.onHandoffToTower(arg)
+        towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[airbaseName]
+        if not towerCheckedIn then return end
+    end
     
     -- Frequency check: Player must be on Tower frequency
     if not ATC.isOnFrequency(unitName, airbaseName, "tower") then
@@ -661,11 +824,16 @@ function ATC.onRequestLanding(arg)
     local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
     local ab = Airbase.getByName(airbaseName)
     local abPos = ab and ATC.getAirbasePos(ab)
+    local rwy = ATC.getRunway(airbaseName)
+    local rwyHdg = rwy and rwy.hdg or 0
+    local rwyNum = math.floor((rwyHdg + 5) / 10)
+    if rwyNum <= 0 then rwyNum = 36 elseif rwyNum > 36 then rwyNum = 36 end
+    local windDir, windSpd = ATC.getWind(abPos)
     rec.landingCleared = rec.landingCleared or {}
     rec.landingCleared[airbaseName] = true
     ATC.radioMsg(rec.groupId, abPos, string.format(
-        "%s, %s Tower, continue approach. Report final.",
-        cs, fieldName), false, airbaseName, "Tower")
+        "%s, %s Tower, cleared to land runway %02d, wind %03d for %d, slow to approach speed, check gear down.",
+        cs, fieldName, rwyNum, windDir, windSpd), false, airbaseName, "Tower")
     ATC.buildFullMenu(unitName)
 end
 function ATC.onTowerContact(arg)
@@ -793,7 +961,7 @@ function ATC.onPositionReport(arg)
         return
     end
     local cs     = unit:getCallsign() or ""
-    local altFt  = ATC.getAltFt(unit)
+    local altFt  = ATC.getAltAglFt(unit)
     local spdKt  = ATC.getSpeedKt(unit)
     local seqN   = ATC.seqPos(unitName, airbaseName)
     local distStr = distNM and string.format("%.1f NM", distNM) or "unknown"
@@ -893,7 +1061,7 @@ function ATC.onEmergency(arg)
     if not ATC.isPlayer(unit) then return end
     local cs     = unit:getCallsign() or ""
     local ab     = Airbase.getByName(airbaseName)
-    local altFt  = ATC.getAltFt(unit)
+    local altFt  = ATC.getAltAglFt(unit)
     local distNM = ATC.distUnitToBase(unit, ab)
     local fs     = ATC.getFieldState(airbaseName)
     local altStr  = altFt  and string.format(" at %d ft",    altFt)  or ""
@@ -956,8 +1124,13 @@ function ATC.checkAndClearNext(airbaseName)
     local rwyC      = ATC.getRunway(airbaseName)
     if abPos and rwyC then
         local legPos = telemPos or (nextUnit and nextUnit:getPoint()) or nil
-        local leg = legPos and ATC.getPatternLeg(legPos, abPos, rwyC) or nil
-        if leg ~= "final" and leg ~= "short_final" then
+        local corners = rwyC and ATC.getPatternCorners(rwyC)
+        local patternIdx = nextRec.patternCornerIdx and nextRec.patternCornerIdx[airbaseName]
+        local isAtCRP5 = false
+        if corners and patternIdx and corners[patternIdx] and corners[patternIdx].seq == 5 then
+            isAtCRP5 = true
+        end
+        if not isAtCRP5 then
             return
         end
     end

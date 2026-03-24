@@ -1,0 +1,143 @@
+# DCS ATC Phrase/Callsign/Number List
+
+## Callsigns
+Enfield
+Springfield
+Uzi
+Colt
+Dodge
+Ford
+Chevy
+Pontiac
+Lobo
+Hawg
+Olds
+Lincoln
+Jedi
+Viper
+Venom
+Witch
+Cobra
+Bone
+Mako
+Dude
+Tiger
+Wolf
+Weasel
+Panther
+Hawk
+Reaper
+Ghost
+Eagle
+Shark
+Sniper
+Lancer
+Devil
+Rebel
+Storm
+Talon
+
+## Controller Roles
+Approach
+Tower
+Ground
+Departure
+
+## Numbers (digit-by-digit)
+zero
+one
+two
+three
+four
+five
+six
+seven
+eight
+niner
+
+## Units
+feet
+knots
+nautical miles
+
+## NATO Phonetic Alphabet
+alpha
+bravo
+charlie
+delta
+echo
+foxtrot
+golf
+hotel
+india
+juliet
+kilo
+lima
+mike
+november
+oscar
+papa
+quebec
+romeo
+sierra
+tango
+uniform
+victor
+whiskey
+xray
+yankee
+zulu
+
+## Special Words
+QFE
+point
+
+## Example Altitude/Pressure
+six five four two feet
+two nine point eight eight
+
+## Stock/Greeting Phrases
+Good morning
+Good afternoon
+Good evening
+Goodbye
+Cleared for the approach
+Radar contact
+Report final
+Expect vectors to runway
+Continue approach
+Hold short of runway
+Runway clear
+You are number
+Contact
+Maintain
+Descend to
+Climb to
+Fly heading
+Turn left heading
+Turn right heading
+Turn final heading
+Base heading
+On this frequency
+From threshold
+Check gear down and locked
+Slow to approach speed
+Go around, go around
+Airspeed critically low
+Established on final
+Straight in
+On downwind
+Crosswind
+Initial
+Abeam the threshold
+Taxi to parking
+Request startup
+Request taxi
+Request takeoff
+Ready for departure
+Request landing
+Emergency services on standby
+State your emergency and intentions
+Runway cleared for immediate approach
+
+# (Add more as found in scripts)

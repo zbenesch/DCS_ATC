@@ -4,15 +4,22 @@ local ATC = ATC or {}
 -- ...existing code...
 
 function ATC.onTakeoffRequest(arg)
+	local unitName    = arg.unitName
+	local airbaseName = arg.airbaseName
+	local rec  = ATC.state.aircraft[unitName]
+	if not rec then return end
+	local unit = Unit.getByName(unitName)
+	if not ATC.isPlayer(unit) then return end
+	local cs = unit:getCallsign() or unitName
+	local fs = ATC.getFieldState(airbaseName)
+
 	-- Check for aircraft above the airfield or in the pattern (minimum separation)
 	local minVertSep = 500 -- feet
 	local minHorizSep = 0.5 -- NM
-	local ownUnit = Unit.getByName(unitName)
-	local ownPos = ownUnit and ownUnit:getPoint() or nil
-	local ownAlt = ownUnit and ownUnit:getPosition().p.y or 0
-	local airfieldPatternAlt = fs.patternAlt or 1500
+	local ownPos = unit and unit:getPoint() or nil
+	local ownAlt = unit and unit:getPosition().p.y or 0
 	local conflict = false
-	if ownPos then
+	if ownPos and fs then
 		for otherName, otherRec in pairs(ATC.state.aircraft) do
 			if otherName ~= unitName and otherRec.airbase == airbaseName and otherRec.phase == "pattern" then
 				local otherUnit = Unit.getByName(otherName)
@@ -34,36 +41,21 @@ function ATC.onTakeoffRequest(arg)
 	end
 	if conflict then
 		ATC.msg(rec.groupId, string.format(
-			"%s\nHold position.  Aircraft in the pattern or overhead.\nStandby for takeoff clearance.", cs))
+			"%s\nHold position.  Aircraft in the pattern or overhead.\nStandby for takeoff clearance.", cs), false, airbaseName, "Tower")
 		return
 	end
-	local unitName    = arg.unitName
-	local airbaseName = arg.airbaseName
-	local rec  = ATC.state.aircraft[unitName]
-	if not rec then return end
-	local unit = Unit.getByName(unitName)
-	if not ATC.isPlayer(unit) then return end
-	local cs = unit:getCallsign() or unitName
-	local fs = ATC.getFieldState(airbaseName)
 
 	-- Require departure direction selection before clearance
 	if not rec.departureDirection then
 		ATC.msg(rec.groupId, string.format(
-			"%s\nSelect departure direction:", cs))
-		-- Present menu options for direction selection (pseudo-code, replace with actual menu logic)
-		-- ATC.showMenu(rec.groupId, {
-		--     { label = "North", action = function() rec.departureDirection = "north" ATC.onTakeoffRequest(arg) end },
-		--     { label = "East",  action = function() rec.departureDirection = "east"  ATC.onTakeoffRequest(arg) end },
-		--     { label = "South", action = function() rec.departureDirection = "south" ATC.onTakeoffRequest(arg) end },
-		--     { label = "West",  action = function() rec.departureDirection = "west"  ATC.onTakeoffRequest(arg) end },
-		-- })
+			"%s\nSelect departure direction:", cs), false, airbaseName, "Tower")
 		return
 	end
 
 	if not fs.rwyClear then
 		ATC.msg(rec.groupId, string.format(
 			"%s\nHold position.  Runway not clear.\nStandby for takeoff clearance.",
-			cs))
+			cs), false, airbaseName, "Tower")
 		return
 	end
 
@@ -88,7 +80,7 @@ function ATC.onTakeoffRequest(arg)
 		local windMsg = string.format("Wind %03d at %d knots.", math.floor(windDir + 0.5), math.floor(windSpd + 0.5))
 		ATC.msg(rec.groupId, string.format(
 			"%s\nRunway clear, cleared for takeoff.\n%s  Cleared for %s departure. After takeoff, contact Departure on %s MHz.",
-			cs, windMsg, rec.departureDirection:upper(), depFreq or "[NO FREQ]"))
+			cs, windMsg, rec.departureDirection:upper(), depFreq or "[NO FREQ]"), false, airbaseName, "Tower")
 		fs.rwyClear = false
 		ATC.setPhase(unitName, airbaseName, "takeoff")
 		ATC.setEngagedField(unitName, airbaseName)
@@ -96,7 +88,7 @@ function ATC.onTakeoffRequest(arg)
 	else
 		ATC.msg(rec.groupId, string.format(
 			"%s\nHold short.  Number %s for departure.",
-			cs, ATC.sequenceNumber(qpos)))
+			cs, ATC.sequenceNumber(qpos)), false, airbaseName, "Tower")
 		ATC.setEngagedField(unitName, airbaseName)
 	end
 end
@@ -111,7 +103,7 @@ function ATC.onReadyDeparture(arg)
 	local cs = unit:getCallsign() or unitName
 
 	ATC.msg(rec.groupId, string.format(
-		"%s\nRoger, standby.\nExpect takeoff clearance shortly.", cs))
+		"%s\nRoger, standby.\nExpect takeoff clearance shortly.", cs), false, airbaseName, "Tower")
 end
 
 return ATC
