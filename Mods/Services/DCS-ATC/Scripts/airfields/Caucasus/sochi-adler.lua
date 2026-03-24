@@ -7,12 +7,13 @@ ATC.runways["Sochi-Adler"] = { hdg=60, reciprocal=240, elevation=98, ILSfreq=111
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     
+    
     crps = {
-        { name="Sochi-Adler CRP1", seq=1, x=-160945.022381760005, y=450317.497658490029, radius=3703.9296 },
-        { name="Sochi-Adler CRP2", seq=2, x=-156835.130336060014, y=463612.494108440005, radius=2777.3376 },
-        { name="Sochi-Adler CRP3", seq=3, x=-166015.646317650011, y=470743.508470839995, radius=2777.3376 },
-        { name="Sochi-Adler CRP4", seq=4, x=-173739.539199160005, y=460811.749970589997, radius=2777.3376 },
-        { name="Sochi-Adler CRP5", seq=5, x=-169962.067477459990, y=455849.200407519995, radius=1388.6688 },
-        { name="Sochi-Adler CRP6", seq=6, x=-161754.535036560002, y=467932.807755169983, radius=1388.6688 },
+        { name="Sochi-Adler CRP1", seq=1, x=-160840.64229029, y=449952.16733834, radius=3703.9296 },
+        { name="Sochi-Adler CRP2", seq=2, x=-155504.28416981, y=463821.25429138, radius=2777.3376 },
+        { name="Sochi-Adler CRP3", seq=3, x=-166250.50152346, y=471187.12385959, radius=2777.3376 },
+        { name="Sochi-Adler CRP4", seq=4, x=-173582.96906195, y=461333.65042794, radius=2777.3376 },
+        { name="Sochi-Adler CRP5", seq=5, x=-172329.96887656, y=457641.23322671, radius=1388.6688 },
+        { name="Sochi-Adler CRP6", seq=6, x=-162320.70541097, y=471217.4600837, radius=1388.6688 },
     },
 }

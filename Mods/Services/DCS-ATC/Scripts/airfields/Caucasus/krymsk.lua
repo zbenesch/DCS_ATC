@@ -7,12 +7,13 @@ ATC.runways["Krymsk"] = { hdg=40, reciprocal=220, elevation=65, ILSfreq=0, patte
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     
+    
     crps = {
-        { name="Krymsk CRP1", seq=1, x=-7205.835639801700, y=283690.030426990008, radius=3703.9296 },
-        { name="Krymsk CRP2", seq=2, x=1552.256368226300, y=293852.615614629991, radius=2777.3376 },
-        { name="Krymsk CRP3", seq=3, x=-6613.307563075000, y=304194.416568820016, radius=2777.3376 },
-        { name="Krymsk CRP4", seq=4, x=-16144.059860331001, y=295464.104008529976, radius=2777.3376 },
-        { name="Krymsk CRP5", seq=5, x=-14755.831557863999, y=290456.711175500008, radius=1388.6688 },
-        { name="Krymsk CRP6", seq=6, x=-2452.477815008300, y=300389.073586150014, radius=1388.6688 },
+        { name="Krymsk CRP1", seq=1, x=-7894.5212075612, y=281623.97372371, radius=3703.9296 },
+        { name="Krymsk CRP2", seq=2, x=2521.5175376656, y=293623.05375871, radius=2777.3376 },
+        { name="Krymsk CRP3", seq=3, x=-6511.2800715551, y=303454.7172553, radius=2777.3376 },
+        { name="Krymsk CRP4", seq=4, x=-15710.443021371, y=294673.39094925, radius=2777.3376 },
+        { name="Krymsk CRP5", seq=5, x=-15036.407159544, y=290992.35550598, radius=1388.6688 },
+        { name="Krymsk CRP6", seq=6, x=-2554.5053065282, y=302480.63716231, radius=1388.6688 },
     },
 }

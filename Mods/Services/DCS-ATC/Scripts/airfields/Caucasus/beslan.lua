@@ -7,12 +7,13 @@ ATC.runways["Beslan"] = { hdg=100, reciprocal=280, elevation=1660, ILSfreq=110.5
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     
+    
     crps = {
-        { name="Beslan CRP1", seq=1, x=-140355.526094119996, y=837113.601080290042, radius=3703.9296 },
-        { name="Beslan CRP2", seq=2, x=-142518.641280920012, y=850528.384433330037, radius=2777.3376 },
-        { name="Beslan CRP3", seq=3, x=-155108.127088070003, y=850484.748936800053, radius=2777.3376 },
-        { name="Beslan CRP4", seq=4, x=-153654.634021829988, y=834624.527779410011, radius=2777.3376 },
-        { name="Beslan CRP5", seq=5, x=-148758.112508349994, y=833972.486295029987, radius=1388.6688 },
-        { name="Beslan CRP6", seq=6, x=-150201.924156410008, y=851407.833429889986, radius=1388.6688 },
+        { name="Beslan CRP1", seq=1, x=-138503.36205044, y=835797.00254322, radius=3703.9296 },
+        { name="Beslan CRP2", seq=2, x=-142540.95651036, y=850483.75397445, radius=2777.3376 },
+        { name="Beslan CRP3", seq=3, x=-155018.8661703, y=850105.39003629, radius=2777.3376 },
+        { name="Beslan CRP4", seq=4, x=-153788.52539848, y=836119.64815202, radius=2777.3376 },
+        { name="Beslan CRP5", seq=5, x=-149963.13489821, y=834686.57363717, radius=1388.6688 },
+        { name="Beslan CRP6", seq=6, x=-151451.57700516, y=852233.49691924, radius=1388.6688 },
     },
 }

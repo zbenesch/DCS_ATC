@@ -7,13 +7,14 @@ ATC.runways["Vaziani"] = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=117.
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     
+    
     crps = {
-        { name="Vaziani CRP1", seq=1, x=-309842.330994500022, y=903904.571830090019, radius=3703.9296 },
-        { name="Vaziani CRP2", seq=2, x=-318423.092234659998, y=911387.891972259968, radius=2777.3376 },
-        { name="Vaziani CRP3", seq=3, x=-329077.573114030005, y=904375.873618889949, radius=2777.3376 },
-        { name="Vaziani CRP4", seq=4, x=-318649.246125160018, y=892583.744599140016, radius=2777.3376 },
-        { name="Vaziani CRP5", seq=5, x=-315051.362798680027, y=895633.032271999982, radius=1388.6688 },
-        { name="Vaziani CRP6", seq=6, x=-325471.708795499988, y=907425.676834960002, radius=1388.6688 },
+        { name="Vaziani CRP1", seq=1, x=-306472.66443629, y=905370.59559243, radius=3703.9296 },
+        { name="Vaziani CRP2", seq=2, x=-318685.66365478, y=912306.89194268, radius=2777.3376 },
+        { name="Vaziani CRP3", seq=3, x=-328114.81124026, y=903631.92126188, radius=2777.3376 },
+        { name="Vaziani CRP4", seq=4, x=-319633.88895061, y=894049.76836148, radius=2777.3376 },
+        { name="Vaziani CRP5", seq=5, x=-315928.4888749, y=894777.0673815, radius=1388.6688 },
+        { name="Vaziani CRP6", seq=6, x=-326965.84781052, y=907410.60045783, radius=1388.6688 },
     },
 }
 

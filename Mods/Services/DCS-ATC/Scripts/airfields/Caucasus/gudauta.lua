@@ -8,13 +8,14 @@ ATC.runways["Gudauta"] = { hdg=330, reciprocal=150, elevation=68, ILSfreq=0, pat
     controllers = { ground=true, tower=true, approach=true, departure=true },
     chart = "charts/Caucasus - Aerodrome Charts.pdf",
     
+    
     crps = {
-        { name="Gudauta CRP1", seq=1, x=-205863.651172100013, y=513969.605325959972, radius=3703.9296 },
-        { name="Gudauta CRP2", seq=2, x=-195963.175832250010, y=507883.024768120027, radius=2777.3376 },
-        { name="Gudauta CRP3", seq=3, x=-187307.978363780014, y=518245.532721269992, radius=2777.3376 },
-        { name="Gudauta CRP4", seq=4, x=-198262.854949989996, y=525672.276305670035, radius=2777.3376 },
-        { name="Gudauta CRP5", seq=5, x=-202336.153203149996, y=522034.436097819998, radius=1388.6688 },
-        { name="Gudauta CRP6", seq=6, x=-191085.929611730011, y=513565.320712359971, radius=1388.6688 },
+        { name="Gudauta CRP1", seq=1, x=-207740.11332135, y=509982.12325881, radius=3703.9296 },
+        { name="Gudauta CRP2", seq=2, x=-195862.65107425, y=507380.40097814, radius=2777.3376 },
+        { name="Gudauta CRP3", seq=3, x=-187777.09390109, y=518279.04097394, radius=2777.3376 },
+        { name="Gudauta CRP4", seq=4, x=-198128.82193933, y=525437.71853701, radius=2777.3376 },
+        { name="Gudauta CRP5", seq=5, x=-201793.59617332, y=523993.60851565, radius=1388.6688 },
+        { name="Gudauta CRP6", seq=6, x=-187843.39853251, y=514549.77377205, radius=1388.6688 },
     },
 }
 
