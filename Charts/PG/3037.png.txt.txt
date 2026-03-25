@@ -1,0 +1,59 @@
+, Dawa fw fw fw fw we
+
+aA aA A A A A A BA
+
+~~."
+
+DISCLAIMER & ACKNOWLEDGEMENTS
+
+el a asi a military pilot. | do not officially know what I’m talking
+about.
+
+* lm acthaly a VFR Pilot, so my knowledge of some of the systems
+
+referenced especially IFR is limited.
+
++ I've referenced all existing documents | could find on DCS in the
+creation of these, so there may be some dated references or info
+that references someone else's work
+
++ Where | could | sourced info from the web on some of these _
+fields, Abu Dhabi for example has excellent diagrams which is
+how | found the Koval Apron. Certain graphics such as the flags
+come from Wikipedia.
+
++ This is intended for sim use only, Due to the limits of DCS ATC
+system | have not tried to create pone IFR approach plates and
+invented a graphic to represent IFR info on the chart. Everything
+else should look familiar to a pilot.
+
++ As much as possible taxiways are drawn from a tour of the
+airfield, | have left our some of the A,B,C segments for taxiways
+for space considerations on the diagrams
+
++ At present all diagrams are oriented North UP.
+
++ There are some dramas with the conversion process with the
+current map view of DCS which has limited some of the data |
+would have otherwise shown.
+
++ Where there are no taxiway markings on a field, | have done_a
+clockwise assignment for simplicity. If you have a Human ATC.
+with these charts and you have them, then you should be good
+
++ If your squadron is ysing these out of their original formatinaming,
+please ping me on the forums and let me know. | don't mind but
+do like to Keep a vague track of where my work is.
+
+. Any errors can be reported through the forums. This is a large
+effort to complete so | don't pretend they are 100% accurate.
+
+\_| 8&7
+NY
+
+~ <<
+Please Enjoy, CombatWombat JUL 2020
+
+Ty Wf ff @ A
+
+~_ aaa Aa A BM

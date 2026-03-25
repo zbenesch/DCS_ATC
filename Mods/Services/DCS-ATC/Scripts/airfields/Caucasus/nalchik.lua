@@ -1,13 +1,22 @@
-ATC.runways["Nalchik"] = { hdg=90, reciprocal=270, elevation=1410, ILSfreq=117.60, patternAlt=2910,
-    frequencies = {
-        ground   = { mhz=121.600, hz=121600000 },
-        tower    = { mhz=119.800, hz=119800000 },
-        approach = { mhz=123.300, hz=123300000 },
-        departure= { mhz=124.300, hz=124300000 }
+ATC.runways["Nalchik"] = {
+    icao = "URMN",
+    iata = "NAL",
+    runways = {
+        ["06/24"] = {
+            length_m = 2200, width_m = 42, surface = "Hard",
+            ends = {
+                ["06"] = { hdg = 60, elevation = 1443, lat = "N43°30.97'", lon = "E43°40.97'" },
+                ["24"] = { hdg = 240, elevation = 1443, lat = "N43°30.97'", lon = "E43°40.97'" }
+            }
+        }
     },
-    controllers = { ground=true, tower=true, approach=true, departure=true },
-    
-    
+    frequencies = {
+        ground   = { mhz = 121.700, hz = 121700000 },
+        tower    = { mhz = 118.100, hz = 118100000 },
+        approach = { mhz = 123.700, hz = 123700000 },
+        departure= { mhz = 0, hz = 0 }
+    },
+    controllers = { ground = true, tower = true, approach = true, departure = true },
     crps = {
         { name="Nalchik CRP1", seq=1, x=-125470.99429731, y=773195.9374967, radius=3703.9296 },
         { name="Nalchik CRP2", seq=2, x=-133982.15930418, y=759460.95791936, radius=2777.3376 },

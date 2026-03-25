@@ -567,13 +567,7 @@ function ATC.getControllerRadio(abName, controller)
 end
 
 function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
-    if ATC and ATC.config and ATC.config.disableVoice then return end
-    if not tokens or #tokens == 0 then return end
-    voice  = voice  or "adam"
-    startT = startT or (timer.getTime() + 0.05)
-    modulation = modulation or ATC.config.radioModulation or 0
-    power = power or ATC.config.radioTxPower or 1000
-    _phraseSeqId = _phraseSeqId + 1
+    -- Voice playback and scheduling logic removed for reimplementation
     local seqId = _phraseSeqId
     ATC.voiceDebug(groupId, string.format(
         "TX seq=%d voice=%s freqHz=%s modulation=%s power=%s tokens=%d",
@@ -663,6 +657,8 @@ function ATC.textToTokens(text)
         end
         text = rest or ""
     end
+    -- Only emit tokens for known words, numbers, or callsigns. Unknown words are skipped and will NOT be spelled out letter by letter.
+    -- This ensures that if a word does not have an .ogg, it is simply omitted from voice playback.
     for word in text:gmatch("[%w_%-]+") do
         if word:match("^__(.-)__$") then
             local chunk = word:match("^__(.-)__$"):gsub("_", "-")
@@ -679,6 +675,7 @@ function ATC.textToTokens(text)
             table.insert(tokens, word)
         else
             -- Unknown word: skip (do not split or spell)
+            -- This is intentional: if there is no .ogg, the word is omitted from voice output.
         end
     end
     return tokens
@@ -708,43 +705,7 @@ function ATC.reserveRadioWindow(abName, controller, duration)
     return startT
 end
 -- The legacy radioMsg function body has been moved to the earlier definition at the top of this file.
-function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller, skipVoice)
-    local spoken = voiceText or text
-    local dur = nil
-    if abName and controller then
-        local ok, result = pcall(getVoiceDuration, spoken, abName, controller)
-        if ok then
-            dur = result
-        else
-            ATC.log(string.format("WARN  radioMsgCustom duration fallback for %s/%s: %s",
-                tostring(abName), tostring(controller), tostring(result)))
-        end
-    end
-    if dur and type(dur) == "number" and dur > 0 then
-        trigger.action.outTextForGroup(groupId, text, dur, false)
-    else
-        -- If voice is disabled or duration couldn't be computed, show text using the
-        -- long duration so the initial greeting/vector remains visible.
-        ATC.msg(groupId, text, true, abName, controller)
-    end
-    if not skipVoice and abPos and abName then
-        local ok, err = pcall(function()
-            controller     = controller or "Approach"
-            local freqHz, modulation, power = ATC.getControllerRadio(abName, controller)
-            local voice    = ATC.getStationVoice(abName, controller)
-            local tokens   = ATC.textToTokens(spoken)
-            local startT   = ATC.reserveRadioWindow(abName, controller, dur or ATC.ttsDuration(spoken))
-            ATC.voiceDebug(groupId, string.format(
-                "radioMsgCustom %s/%s voice=%s freqHz=%s text='%s' spoken='%s'",
-                tostring(abName), tostring(controller), tostring(voice), tostring(freqHz), tostring(text), tostring(spoken)))
-            ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
-        end)
-        if not ok then
-            ATC.log(string.format("WARN  radioMsgCustom audio fallback for %s/%s: %s",
-                tostring(abName), tostring(controller), tostring(err)))
-        end
-    end
-end
+-- Voice playback and scheduling logic removed for reimplementation
 function ATC.roundHdg(h)
     local r = math.floor(h / 10 + 0.5) * 10 % 360
     return r == 0 and 360 or r

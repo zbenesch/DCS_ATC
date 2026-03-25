@@ -6,8 +6,6 @@
         departure= { mhz=124.300, hz=124300000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
-    
-    
     crps = {
         { name="Gelendzhik CRP1", seq=1, x=-50973.734709297, y=285533.43377942, radius=3703.9296 },
         { name="Gelendzhik CRP2", seq=2, x=-41646.120220449, y=295881.61513512, radius=2777.3376 },

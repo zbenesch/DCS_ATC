@@ -1,4 +1,15 @@
-ATC.runways["Beslan"] = { hdg=100, reciprocal=280, elevation=1660, ILSfreq=110.50, patternAlt=3160,
+ATC.runways["Beslan"] = {
+    icao = "URMS",
+    iata = "OGZ",
+    runways = {
+        ["09/27"] = {
+            length_m = 3000, width_m = 44, surface = "Hard",
+            ends = {
+                ["09"] = { hdg = 90, elevation = 1671, lat = "N43°12.97'", lon = "E44°36.97'" },
+                ["27"] = { hdg = 270, elevation = 1671, lat = "N43°12.97'", lon = "E44°36.97'" }
+            }
+        }
+    },
     frequencies = {
         ground   = { mhz=121.700, hz=121700000 },
         tower    = { mhz=118.700, hz=118700000 },

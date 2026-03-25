@@ -7,7 +7,7 @@ ATC.runways["Gudauta"] = { hdg=330, reciprocal=150, elevation=68, ILSfreq=0, pat
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
     chart = "charts/Caucasus - Aerodrome Charts.pdf",
-    
+    arp = { lat = "43°06.856'N", lon = "040°34.187'E" },
     
     crps = {
         { name="Gudauta CRP1", seq=1, x=-207740.11332135, y=509982.12325881, radius=3703.9296 },
@@ -17,5 +17,14 @@ ATC.runways["Gudauta"] = { hdg=330, reciprocal=150, elevation=68, ILSfreq=0, pat
         { name="Gudauta CRP5", seq=5, x=-201793.59617332, y=523993.60851565, radius=1388.6688 },
         { name="Gudauta CRP6", seq=6, x=-187843.39853251, y=514549.77377205, radius=1388.6688 },
     },
+    runways = {
+        ["15/33"] = {
+            length_m = 2500, width_m = 40, surface = "Hard",
+            ends = {
+                ["15"] = { hdg = 150, elevation = 68, lat = "43°06.856'N", lon = "040°34.187'E" },
+                ["33"] = { hdg = 330, elevation = 68, lat = "43°06.856'N", lon = "040°34.187'E" }
+            }
+        }
+    }
 }
 
