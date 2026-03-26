@@ -376,8 +376,11 @@ function ATC.checkGlideslopes()
 end
 function ATC.getPatternLegs(rwy)
     if not rwy then return nil end
-    local finalHdg  = rwy.hdg
-    local downHdg   = rwy.reciprocal or ((rwy.hdg + 180) % 360)
+    -- All headings are TRUE north so they can be compared directly with
+    -- aircraft velocity headings (which DCS also reports in true north).
+    -- Use ATC.toMag() when voicing to the pilot.
+    local finalHdg  = ATC.toTrue(rwy.hdg)
+    local downHdg   = ATC.toTrue(rwy.reciprocal or ((rwy.hdg + 180) % 360))
     local dir       = rwy.patternDir or "L"
     local offset    = (dir == "R") and 90 or -90
     local baseHdg   = (downHdg + offset + 360) % 360
@@ -578,46 +581,30 @@ function ATC.freePatternSlot(unitName, abName)
 end
 function ATC.freeStackLevel(unitName, abName)
     ATC.freePatternSlot(unitName, abName)
+    local fs = ATC.state.airfields[abName]
+    if fs and fs.holdStack then fs.holdStack[unitName] = nil end
 end
 local function getPatternFloorAlt(rwy, crp)
-    -- Assign CRP altitudes per user spec:
-    -- CRP1: terrain MSL + 4500 (rounded up to 100)
-    -- CRP2: terrain MSL + 3500 (rounded up to 100)
-    -- CRP3: terrain MSL + 2500 (rounded up to 100)
-    -- CRP4: terrain MSL + 2000 (rounded up to 100)
-    -- CRP5: 1500 ft AGL (above terrain at CRP5), always
-    if crp and crp.pos and crp.seq then
-        local elevM = 0
-        if land and land.getHeight then
-            local ok, h = pcall(land.getHeight, { x = crp.pos.x, y = crp.pos.z })
-            if ok and type(h) == "number" then
-                elevM = h
-            end
-            -- Debug log for CRP coordinates and elevation
-            ATC.log(string.format(
-                "CRP DEBUG: %s seq=%d x=%.2f z=%.2f elevM=%.2f",
-                crp.name or "?", crp.seq or -1, crp.pos.x or 0, crp.pos.z or 0, elevM or 0
-            ))
-        end
-        local elevFt = math.floor(ATC.mToFt and ATC.mToFt(elevM) or (elevM * 3.28084))
+    -- CRP altitude profile (AGL above field elevation, rounded up to nearest 100 ft):
+    -- CRP1: field elevation + 4500 ft
+    -- CRP2: field elevation + 3500 ft
+    -- CRP3: field elevation + 2500 ft
+    -- CRP4: field elevation + 2000 ft
+    -- CRP5: field elevation + 1500 ft  (final approach point)
+    -- Uses rwy.elevation (already in feet) so the profile is a smooth monotonic
+    -- descent independent of terrain under each CRP.
+    if crp and crp.seq then
+        local elevFt = (rwy and rwy.elevation) or 0
         local seq = tonumber(crp.seq)
-        local alt
-        if seq == 1 then
-            alt = elevFt + 4500
-        elseif seq == 2 then
-            alt = elevFt + 3500
-        elseif seq == 3 then
-            alt = elevFt + 2500
-        elseif seq == 4 then
-            alt = elevFt + 2000
-        elseif seq == 5 then
-            alt = elevFt + 1500 -- 1500 AGL for CRP5
-        else
-            alt = elevFt + 4500 -- fallback for any extra CRPs
+        local agl
+        if     seq == 1 then agl = 4500
+        elseif seq == 2 then agl = 3500
+        elseif seq == 3 then agl = 2500
+        elseif seq == 4 then agl = 2000
+        elseif seq == 5 then agl = 1500
+        else                  agl = 4500
         end
-        -- Round up to nearest 100
-        alt = math.ceil(alt / 100) * 100
-        return alt
+        return math.ceil((elevFt + agl) / 100) * 100
     end
     local alts = rwy and rwy.patternAlts
     if alts and #alts > 0 then return alts[#alts] end
@@ -637,8 +624,11 @@ local function getOccupiedPatternAlt(otherName, rec, abName, rwy)
     return nil
 end
 
-local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy, crp)
-    local floorAlt = getPatternFloorAlt(rwy, crp)
+local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy)
+    -- Returns the minimum altitude this unit should be assigned to maintain
+    -- 1000 ft vertical separation from the highest aircraft below it.
+    -- Returns 0 when no other aircraft are in the pattern below, so the caller
+    -- can freely descend to the next CRP target.
     local highestBelow = nil
     for otherName, otherRec in pairs(ATC.state.aircraft) do
         if otherName ~= unitName then
@@ -649,7 +639,7 @@ local function getProtectedPatternAlt(unitName, abName, currentAlt, rwy, crp)
         end
     end
     if highestBelow then return highestBelow + 1000 end
-    return floorAlt
+    return 0  -- no aircraft below: no altitude protection needed
 end
 
 local function setPatternAltitude(unitName, rec, abName, altFt)
@@ -710,7 +700,7 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
     local distNM = navPos and ATC.mToNM(ATC.distVec3H(uPos, navPos)) or nil
     local magHdg = ATC.roundHdg(ATC.toMag(targetHdg))
     local hdgPart
-    if hdgDiff <= 10 then
+    if hdgDiff <= 45 then
         hdgPart = "fly heading " .. ATC.fmtHdg(magHdg)
     elseif angleDiff(currHdg, targetHdg) > 0 then
         hdgPart = "turn RIGHT heading " .. ATC.fmtHdg(magHdg)
@@ -830,7 +820,7 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
     local crp = corners[cornerIdx]
     local nextCrp = corners[nextIdx]
     local floorAlt = getPatternFloorAlt(rwy, crp)
-    local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy, crp)
+    local protectedAlt = getProtectedPatternAlt(unitName, abName, patAlt, rwy)
     local nextAlt = getPatternFloorAlt(rwy, nextCrp)
     local gate = { altFt = patAlt, noSpeed = true }
     local isCp5Target = nextCrp and nextCrp.isCP5
@@ -1036,8 +1026,8 @@ function ATC.checkVectoring()
     local now = timer.getTime()
     for unitName, rec in pairs(ATC.state.aircraft) do
         local unit = Unit.getByName(unitName)
-        if unit and ATC.isPlayer(unit) and rec.activeField then
-            local abName = rec.activeField
+        if unit and ATC.isPlayer(unit) and rec.engagedField then
+            local abName = rec.engagedField
             local ph     = ATC.getPhase(unitName, abName)
             if (ph == "inbound" or ph == "approach")
                and rec.patternAlt and rec.patternAlt[abName] then

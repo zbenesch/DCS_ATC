@@ -141,13 +141,13 @@ local function getMissionQnhHpa()
         return 1013.25
     end
     if qnh > 2000 then
-        return qnh / 100.0
-    end
-    if qnh > 200 then
-        return qnh * 1.33322
+        return qnh / 100.0   -- raw Pa → hPa
     end
     if qnh > 800 then
-        return qnh
+        return qnh            -- already hPa
+    end
+    if qnh > 200 then
+        return qnh * 1.33322  -- mmHg → hPa
     end
     return 1013.25
 end
@@ -276,7 +276,7 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         local safeUnitName2 = tostring(unitName or 'nil')
         local safeAbName = tostring(abName or 'nil')
         local safeInAir = tostring(inAir or 'nil')
-        local safeDistM = tonumber(distM) or -1
+        local safeDistM = tonumber(fieldEntry.distM) or -1
         ATC.log(string.format("BUILD_FIELD_MENU: unit=%s ab=%s inAir=%s distM=%.1f", safeUnitName2, safeAbName, safeInAir, safeDistM))
 end
 function ATC.buildFullMenu(unitName)
@@ -354,22 +354,13 @@ function ATC.buildFullMenu(unitName)
 end
 function ATC.setPhase(unitName, airbaseName, newPhase)
     local rec = ATC.state.aircraft[unitName]
-    if not rec or not rec.menuRoot then return end
-    local abName = fieldEntry.name
-    ATC.log(string.format("BUILD_FIELD_MENU: unit=%s raw abName=%s", tostring(unitName), tostring(abName)))
-    -- Normalize all airfield names for robust lookup
-    if abName then
-        local norm = abName:lower():gsub("[^%w]", "")
-        ATC.log(string.format("BUILD_FIELD_MENU: normalized abName=%s", norm))
-        -- Find the canonical key in ATC.runways
-        for key, _ in pairs(ATC.runways or {}) do
-            if key:lower():gsub("[^%w]", "") == norm then
-                ATC.log(string.format("BUILD_FIELD_MENU: matched canonical key=%s", key))
-                abName = key
-                break
-            end
-        end
-    end
+    if not rec then return end
+    if not rec.phases then rec.phases = {} end
+    rec.phases[airbaseName] = newPhase
+    ATC.buildFullMenu(unitName)
+end
+
+function ATC.onRefreshMenu(unitName)
     local rec = ATC.state.aircraft[unitName]
     if not rec then return end
     local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)

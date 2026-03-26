@@ -1,4 +1,4 @@
-﻿ATC.runways["Gelendzhik"] = { hdg=40, reciprocal=220, elevation=82, ILSfreq=0, patternAlt=1582,
+ATC.runways["Gelendzhik"] = { hdg=40, reciprocal=220, elevation=82, ILSfreq=0, patternAlt=1582,
     frequencies = {
         ground   = { mhz=121.800, hz=121800000 },
         tower    = { mhz=118.800, hz=118800000 },

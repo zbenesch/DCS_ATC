@@ -12,6 +12,7 @@ function ATC.onTakeoffRequest(arg)
 	if not ATC.isPlayer(unit) then return end
 	local cs = unit:getCallsign() or unitName
 	local fs = ATC.getFieldState(airbaseName)
+	local rwy = ATC.getRunway(airbaseName)
 
 	-- Check for aircraft above the airfield or in the pattern (minimum separation)
 	local minVertSep = 500 -- feet
@@ -21,7 +22,8 @@ function ATC.onTakeoffRequest(arg)
 	local conflict = false
 	if ownPos and fs then
 		for otherName, otherRec in pairs(ATC.state.aircraft) do
-			if otherName ~= unitName and otherRec.airbase == airbaseName and otherRec.phase == "pattern" then
+			local otherPhase = otherRec.phases and otherRec.phases[airbaseName]
+			if otherName ~= unitName and otherRec.engagedField == airbaseName and otherPhase ~= nil then
 				local otherUnit = Unit.getByName(otherName)
 				if otherUnit then
 					local otherPos = otherUnit:getPoint()
@@ -67,15 +69,14 @@ function ATC.onTakeoffRequest(arg)
 
 	local qpos = #fs.departSeq
 	if qpos == 1 then
-		-- Get departure frequency from airfield data
-		local depFreq = nil
-		if fs and fs.frequencies and fs.frequencies.departure then
-			depFreq = fs.frequencies.departure.mhz
-		end
+		-- Get departure frequency from runway config (not field state)
+		local depFreq = rwy and rwy.frequencies and rwy.frequencies.departure and rwy.frequencies.departure.mhz
 		-- Get wind data
 		local windDir, windSpd = 0, 0
 		if ATC.getWind then
-			windDir, windSpd = ATC.getWind(airbaseName)
+			local ab = Airbase.getByName(airbaseName)
+			local abPos = ab and ATC.getAirbasePos and ATC.getAirbasePos(ab)
+			windDir, windSpd = ATC.getWind(abPos)
 		end
 		local windMsg = string.format("Wind %03d at %d knots.", math.floor(windDir + 0.5), math.floor(windSpd + 0.5))
 		ATC.msg(rec.groupId, string.format(

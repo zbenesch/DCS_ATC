@@ -7,9 +7,10 @@ function ATC.onStartupRequest(arg)
 	-- Handle startup individually, not by group
 	local rec = ATC.state.aircraft[unitName]
 	local cs = unit:getCallsign() or unitName
+	local groupId = rec and rec.groupId or (unit:getGroup() and unit:getGroup():getID())
 	-- Enqueue the request
 	local startupAb = rec and rec.engagedField or "Kobuleti"
-	ATC.msg(unitName, string.format("%s\nStartup clearance granted. Contact ground when ready to taxi.", cs), false, startupAb, "Ground")
+	ATC.msg(groupId, string.format("%s\nStartup clearance granted. Contact ground when ready to taxi.", cs), false, startupAb, "Ground")
 end
 
 function ATC.onTaxiRequest(arg)
@@ -28,7 +29,12 @@ function ATC.onTaxiRequest(arg)
 	-- Get wind and select best runway, override for heavy loadout
 	local rwy07 = ATC.runways and ATC.runways[airfield] and ATC.runways[airfield].hdg or 64
 	local rwy25 = ATC.runways and ATC.runways[airfield] and ATC.runways[airfield].reciprocal or 244
-	local windDir, windSpd = ATC.getWind and ATC.getWind(ATC.getAirbasePos and ATC.getAirbasePos(Airbase.getByName(airfield))) or 130, 8
+	local windDir, windSpd = 130, 8
+	if ATC.getWind then
+		local ab = Airbase.getByName(airfield)
+		local abPos = ATC.getAirbasePos and ab and ATC.getAirbasePos(ab)
+		if abPos then windDir, windSpd = ATC.getWind(abPos) end
+	end
 
 	local heavy = arg.heavy or (rec and rec.heavy)
 
@@ -38,10 +44,10 @@ function ATC.onTaxiRequest(arg)
 		bestNode = "RWY25"
 	else
 		-- Calculate headwind component for each runway
-		local function headwind(runwayHdg, windHdg, windSpd)
+		local function headwind(runwayHdg, windHdg, wSpd)
 			local diff = math.abs(runwayHdg - windHdg)
 			if diff > 180 then diff = 360 - diff end
-			return windSpd * math.cos(math.rad(diff))
+			return wSpd * math.cos(math.rad(diff))
 		end
 		local hw07 = headwind(rwy07, windDir, windSpd)
 		local hw25 = headwind(rwy25, windDir, windSpd)
@@ -83,7 +89,7 @@ function ATC.onTaxiRequest(arg)
 	local routeStr = ""
 	if route and #route > 1 then
 		local names = {}
-		for i, n in ipairs(route) do
+		for _, n in ipairs(route) do
 			local node = taxiGraph.nodes[n]
 			if node then table.insert(names, node.name or n) end
 		end

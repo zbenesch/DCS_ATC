@@ -66,6 +66,15 @@ local _EXPORT_FRAME_INJECT = [[
         end
         addKey(sd.Name)
         addKey(sd.UnitName)
+        -- Also push under the DCS pilot/player name so the server can match via
+        -- unit:getPlayerName() regardless of whether UnitName is populated.
+        local ok_pid, pid = pcall(function()
+            return net and net.get_my_player_id and net.get_my_player_id()
+        end)
+        if ok_pid and pid and pid ~= 0 then
+            local ok_nm, nm = pcall(function() return net.get_name(pid) end)
+            if ok_nm and type(nm) == "string" and nm ~= "" then addKey(nm) end
+        end
         if #unitKeys == 0 then return end
         -- Scan cockpit devices for radio frequencies
         local seen, list = {}, {}

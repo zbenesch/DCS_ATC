@@ -19,49 +19,42 @@ function ATC.debugPrintRadioFrequencies(unitName)
     end
     return msg
 end
--- Extract tuned radio frequencies for a given unit (player aircraft)
+-- Extract tuned radio frequencies for a given unit (player aircraft).
+-- Primary source: ATC._radioFreqs populated by the export hook via LoGetSelfData /
+-- GetDevice scan. The hook pushes data under the DCS pilot name (net.get_name),
+-- the aircraft unit name (sd.UnitName), and the aircraft type (sd.Name) as fallback.
+-- Lookup order: unit name -> pilot name -> type name (type is last resort; unreliable
+-- when multiple aircraft of the same type are airborne).
 function ATC.getRadioFrequencies(unitName)
-    -- Returns a table: [radioIdx] = frequency_in_mhz (up to 4 radios)
-    local result = {}
-    if not unitName or type(unitName) ~= "string" then return result end
-    local unit = Unit.getByName(unitName)
-    if not unit or not unit:isExist() then return result end
-    -- Try to get radio data (works for most player aircraft)
-    if unit.getRadio then
-        local radios = unit:getRadio()
-        if radios and type(radios) == "table" then
-            for idx, radio in ipairs(radios) do
-                if radio and radio.frequency then
-                    -- DCS frequencies are in Hz; convert to MHz
-                    local mhz = tonumber(radio.frequency) / 1e6
-                    if mhz and mhz > 10 and mhz < 5000 then
-                        result[idx] = mhz
-                    end
+    if ATC._radioFreqs then
+        -- 1. Direct match by DCS unit/mission name
+        local direct = ATC._radioFreqs[unitName]
+        if direct and type(direct) == "table" and next(direct) ~= nil then
+            return direct
+        end
+        local unit = Unit.getByName(unitName)
+        if unit and unit:isExist() then
+            -- 2. Match by DCS pilot/player name (pushed by export hook via net.get_name)
+            local ok_pn, playerName = pcall(function() return unit:getPlayerName() end)
+            if ok_pn and type(playerName) == "string" and playerName ~= "" then
+                local byPlayer = ATC._radioFreqs[playerName]
+                if byPlayer and type(byPlayer) == "table" and next(byPlayer) ~= nil then
+                    return byPlayer
+                end
+            end
+            -- 3. Last-resort: aircraft type name (LoGetSelfData().Name)
+            local ok_tn, typeName = pcall(function() return unit:getTypeName() end)
+            if ok_tn and type(typeName) == "string" then
+                local byType = ATC._radioFreqs[typeName]
+                if byType and type(byType) == "table" and next(byType) ~= nil then
+                    return byType
                 end
             end
         end
     end
-    -- Fallback: try to get frequencies from unit:getDesc().radio if available
-    if next(result) == nil and unit.getDesc then
-        local desc = unit:getDesc()
-        if desc and desc.radio and type(desc.radio) == "table" then
-            for idx, radio in ipairs(desc.radio) do
-                if radio and radio.channels and type(radio.channels) == "table" then
-                    -- Use the first channel as the tuned frequency (if no better info)
-                    local ch = radio.channels[1]
-                    if ch and ch.frequency then
-                        local mhz = tonumber(ch.frequency) / 1e6
-                        if mhz and mhz > 10 and mhz < 5000 then
-                            result[idx] = mhz
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return result
+    return {}
 end
-local _scriptsBase = _ATC_BASE or ""
+_ATC_BASE = _ATC_BASE or ""  -- base path set by hook
 ATC = ATC or {}
 local _runwaySnapshot = ATC.runways
 ATC.runways = ATC.runways or {}
@@ -160,24 +153,14 @@ ATC.config = {
     defaultPatternAltFt = 1500,
     voiceDebug = true,
     voiceDebugToGroup = true,
-    disableVoice = true,  -- when true, disable tokenization and radioTransmission audio
+    disableVoice = false, -- when true, disable tokenization and radioTransmission audio
     magvarCaucasus = 6,   -- Caucasus / Black Sea
     magvarPG = 2,         -- Persian Gulf
     magvarSyria = 4,      -- Syria
     magvarDefault = 0,    -- Default fallback
 }
 
--- At the end of the main script, after all airfields are loaded, call this to re-add normalized keys:
-if ATC.deferRegisterNormalizedRunways then
-    ATC.deferRegisterNormalizedRunways()
-    -- Debug: print all keys in ATC.runways after normalization
-    if ATC and ATC.runways then
-        local keys = {}
-        for k, _ in pairs(ATC.runways) do keys[#keys+1] = k end
-        table.sort(keys)
-        ATC.log("DEBUG ATC.runways keys after normalization: " .. table.concat(keys, ", "))
-    end
-end
+-- Normalization is deferred; called from onSimStart after airfields load.
 
 
 
@@ -337,6 +320,27 @@ end
 function ATC.radioMsg(groupId, abPos, text, long, abName, controller)
     ATC.msg(groupId, text, long, abName, controller, true)
     sendRadioVoice(groupId, abPos, text, abName, controller, nil)
+end
+
+function ATC.radioMsgCustom(groupId, abPos, text, voiceText, long, abName, controller, skipVoice)
+    local dur = long and ATC.config.msgDurationLong or ATC.config.msgDuration
+    if abName and controller then
+        local ok, result = pcall(getVoiceDuration, voiceText or text, abName, controller)
+        if ok and type(result) == "number" and result > 0 then
+            dur = result
+        else
+            dur = ATC.config.msgDurationLong
+        end
+    end
+    trigger.action.outTextForGroup(groupId, text, dur, false)
+    if not skipVoice and abName and controller then
+        local pos = abPos
+        if not pos then
+            local ab = Airbase.getByName(abName)
+            pos = ab and ATC.getAirbasePos(ab)
+        end
+        sendRadioVoice(groupId, pos, voiceText or text, abName, controller, dur)
+    end
 end
 local function normalizeAirbaseName(name)
     if not name or name == "" then return nil end
@@ -589,15 +593,13 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
     local radios = telem and telem.radios
     local hasRadioData = radios and next(radios) ~= nil
     if not hasRadioData then
+        -- No radio data from export hook (aircraft type may not expose frequencies,
+        -- or LoGetSelfData().UnitName mismatch). Allow the request rather than
+        -- blocking indefinitely.
         ATC.voiceDebug(groupId, string.format(
-            "%s freq-check BLOCKED (no radio data) controller=%s required=%.3f",
+            "%s freq-check BYPASS (no radio data) controller=%s required=%.3f",
             tostring(unitName), tostring(controller), requiredFreqMhz))
-        -- Extra debug: dump telemetry and rec
-        ATC.voiceDebug(groupId, string.format(
-            "TELEMETRY: %s", tostring(telem)))
-        ATC.voiceDebug(groupId, string.format(
-            "REC: %s", tostring(rec)))
-        return false
+        return true
     end
 
     -- Check if ANY radio is tuned to the correct frequency (±0.05 MHz tolerance)
@@ -686,7 +688,7 @@ function ATC.getControllerRadio(abName, controller)
 end
 
 function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modulation, power)
-    -- Voice playback and scheduling logic removed for reimplementation
+    _phraseSeqId = _phraseSeqId + 1
     local seqId = _phraseSeqId
     ATC.voiceDebug(groupId, string.format(
         "TX seq=%d voice=%s freqHz=%s modulation=%s power=%s tokens=%d",
@@ -694,9 +696,9 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modul
     -- Debug: Log the contents of ATC._phraseDur at runtime
     if ATC._phraseDur then
         local count = 0
-        for k, v in pairs(ATC._phraseDur) do count = count + 1 end
+        for _ in pairs(ATC._phraseDur) do count = count + 1 end
         ATC.log("DEBUG  ATC._phraseDur contains " .. tostring(count) .. " entries.")
-        for k, v in pairs(ATC._phraseDur) do
+        for k, v in pairs(ATC._phraseDur) do  -- k,v used in log below
             if count <= 20 then -- only log all if small, else just a sample
                 ATC.log("DEBUG  ATC._phraseDur[" .. tostring(k) .. "] = " .. tostring(v))
             end
@@ -926,10 +928,7 @@ local HOLD_AGL_SEP    = ATC.config.holdAglSep
 local HOLD_MAX_LEVELS = ATC.config.holdMaxLevels
 local HOLD_SPEED      = 300   -- hold speed kt (uniform for all stack levels)
 local HOLD_LEG_NM    = 5      -- outbound leg length NM
-local ENTRY_BASE_AGL = 3000   -- altitude AGL for entry / base leg
 local FINAL_AGL      = 1500   -- altitude AGL at the final approach point (8 NM)
-local PATTERN_CORNER_NM  = 1.5   -- within this NM of a CRP corner: advance to next
-local PATTERN_FINAL_ALT  = 1500  -- ft; after full lap at this altitude -> turn final
 function ATC.getApproachGates(rwy, unit, startAlt)
     local spds = ATC.getApproachSpeeds(unit)
     local elev = rwy.elevation or 0
