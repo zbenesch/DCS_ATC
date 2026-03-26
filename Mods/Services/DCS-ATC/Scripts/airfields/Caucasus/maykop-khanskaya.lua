@@ -13,7 +13,13 @@ ATC.runways["Maykop-Khanskaya"] = { hdg=40, reciprocal=220, elevation=591, ILSfr
         { name="Maykop-Khanskaya CRP2", seq=2, x=-17391.034889504, y=457002.45327097, radius=2777.3376 },
         { name="Maykop-Khanskaya CRP3", seq=3, x=-25337.278131796, y=467114.91588739, radius=2777.3376 },
         { name="Maykop-Khanskaya CRP4", seq=4, x=-35526.368319168, y=458313.01560028, radius=2777.3376 },
-        { name="Maykop-Khanskaya CRP5", seq=5, x=-34553.268610936, y=453938.5026577, radius=1388.6688 },
-        { name="Maykop-Khanskaya CRP6", seq=6, x=-21383.037916373, y=465642.33781384, radius=1388.6688 },
+        { name="Maykop-Khanskaya CRP5", seq=5, x=-34395.485126805, y=453465.15220531, radius=1388.6688 },
+        { name="Maykop-Khanskaya CRP6", seq=6, x=-20436.34, y=464853.42, radius=1388.6688 },
+    },
+    rwy = {
+        { x=-27701.36, y=457057.44 },
+        { x=-25217.36, y=459072.98 },
+        { x=-25182.2, y=459027.94 },
+        { x=-27666.57, y=457014.34 },
     },
 }

@@ -11,11 +11,15 @@ ATC.runways["Gudauta"] = { hdg=330, reciprocal=150, elevation=68, ILSfreq=0, pat
     crps = {
         { name="Gudauta CRP1", seq=1, x=-207740.11332135, y=509982.12325881, radius=3703.9296 },
         { name="Gudauta CRP2", seq=2, x=-195862.65107425, y=507380.40097814, radius=2777.3376 },
-        { name="Gudauta CRP3", seq=3, x=-187777.09390109, y=518279.04097394, radius=2777.3376 },
+        { name="Gudauta CRP3", seq=3, x=-187967.31521009, y=519039.92620995, radius=2777.3376 },
         { name="Gudauta CRP4", seq=4, x=-198128.82193933, y=525437.71853701, radius=2777.3376 },
-        { name="Gudauta CRP5", seq=5, x=-201793.59617332, y=523993.60851565, radius=1388.6688 },
-        { name="Gudauta CRP6", seq=6, x=-187843.39853251, y=514549.77377205, radius=1388.6688 },
+        { name="Gudauta CRP5", seq=5, x=-203833.97209712, y=522250.6575273, radius=1388.6688 },
+        { name="Gudauta CRP6", seq=6, x=-188390.28, y=513075.56, radius=1388.6688 },
     },
-
+    rwy = {
+        { x=-195637.22, y=515824.26 },
+        { x=-197823.83, y=517037.91 },
+        { x=-197797.5, y=517087.85 },
+        { x=-195609.01, y=515874.92 },
+    },
 }
-

@@ -9,10 +9,17 @@ ATC.runways["Anapa-Vityazevo"] = {
     },
     controllers = { ground = true, tower = true, approach = true, departure = true },
     crps = {
-        { name="Anapa-Vityazevo CRP1", seq=1, x=-7328.8028747164,  y=230385.14223174, radius=3703.9296 },
-        { name="Anapa-Vityazevo CRP2", seq=2, x=3658.293721895,    y=242550.73944302, radius=2777.3376 },
-        { name="Anapa-Vityazevo CRP3", seq=3, x=-5633.1317919856,  y=252262.65360192, radius=2777.3376 },
-        { name="Anapa-Vityazevo CRP4", seq=4, x=-14428.722830973,  y=244513.77026443, radius=2777.3376 },
-        { name="Anapa-Vityazevo CRP5", seq=5, x=-14166.605255138,  y=240502.1401143,  radius=1388.6688 },
+        { name="Anapa-Vityazevo CRP1", seq=1, x=-7328.8028747164, y=230385.14223174, radius=3703.9296 },
+        { name="Anapa-Vityazevo CRP2", seq=2, x=3658.293721895, y=242550.73944302, radius=2777.3376 },
+        { name="Anapa-Vityazevo CRP3", seq=3, x=-5633.1317919856, y=252262.65360192, radius=2777.3376 },
+        { name="Anapa-Vityazevo CRP4", seq=4, x=-14428.722830973, y=244513.77026443, radius=2777.3376 },
+        { name="Anapa-Vityazevo CRP5", seq=5, x=-13023.851006043, y=237929.24073948, radius=1388.6688 },
+        { name="Anapa-Vityazevo CRP6", seq=6, x=-10.72, y=250442.21, radius=1388.6688 },
+    },
+    rwy = {
+        { x=-6515.89, y=242189.78 },
+        { x=-4342.77, y=244112.95 },
+        { x=-4306.46, y=244069.96 },
+        { x=-6478.81, y=242148.34 },
     },
 }

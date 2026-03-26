@@ -219,8 +219,30 @@ local function ensureGuidanceTables(rec, abName)
     if not rec.handedOffToTower then rec.handedOffToTower = {} end
     if not rec.patternAdv   then rec.patternAdv   = {} end
 end
+
+-- Point-in-polygon for the runway rectangle.
+-- pos      : Vec3 from unit:getPoint()  (pos.x = northing, pos.z = easting)
+-- rwyVerts : {x=northing, y=easting}[] corners from rwy.rwy config
+local function pointInRwy(pos, rwyVerts)
+    local px, py = pos.x, pos.z
+    local n = #rwyVerts
+    local inside = false
+    local j = n
+    for i = 1, n do
+        local xi, yi = rwyVerts[i].x, rwyVerts[i].y
+        local xj, yj = rwyVerts[j].x, rwyVerts[j].y
+        if ((yi > py) ~= (yj > py)) and
+           (px < (xj - xi) * (py - yi) / (yj - yi) + xi) then
+            inside = not inside
+        end
+        j = i
+    end
+    return inside
+end
+
 function ATC.checkGlideslopes()
     local now = timer.getTime()
+    local autoVacate = {}   -- collect here; fire after loops to avoid mutating landingSeq mid-iteration
     for abName, fs in pairs(ATC.state.airfields) do
         local ab    = Airbase.getByName(abName)
         local abPos = ab and ATC.getAirbasePos(ab)
@@ -369,9 +391,22 @@ function ATC.checkGlideslopes()
                             end
                         end
                     end
+                    -- Auto landing detection: cleared, on ground, < 50 kt, inside runway polygon
+                    local rwyDef = ATC.runways and ATC.runways[abName]
+                    if rwyDef and rwyDef.rwy
+                    and (rec.landingCleared and rec.landingCleared[abName])
+                    and not unit:inAir()
+                    and (ATC.getSpeedKt(unit) or 999) < 50
+                    and pointInRwy(unit:getPoint(), rwyDef.rwy) then
+                        table.insert(autoVacate, { unitName = unitName, airbaseName = abName })
+                    end
                 end -- if ab and rwy
             end -- if not abName / else
         end
+    end
+    for _, av in ipairs(autoVacate) do
+        ATC.log(string.format("AUTO-VACATE %s @%s", av.unitName, av.airbaseName))
+        ATC.onVacatingRunway(av)
     end
 end
 function ATC.getPatternLegs(rwy)
@@ -879,9 +914,10 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
 
     if nextCrp and nextCrp.isCP5 then
         -- Vector to CP5 instead of immediately switching to final.
-        -- Use CP5's computed altitude (MSL+1500) for the vector instruction.
+        -- Use CP5's computed altitude (field elevation + 1500 ft) for the vector instruction.
         local cp5Alt = getPatternFloorAlt(rwy, nextCrp)
         gate.altFt = cp5Alt
+        setPatternAltitude(unitName, rec, abName, cp5Alt)  -- keep patternAlt in sync so re-vectors use the right altitude
         rec.patternCornerIdx[abName] = nextIdx
         ATC.log(string.format("PATIDX ADV: %-10s @%s  -> idx=%d (advance to CP5)", unitName, abName, nextIdx))
         local uPos = unit:getPoint()
@@ -988,38 +1024,54 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     ATC.log(string.format("CVEC  %-10s @%s  ph=%s  dist=%.1fNM  alt=%d  corner=%d",
         unitName, abName, ATC.getPhase(unitName, abName), distNM, patAlt, cornerIdx))
     local gate = { altFt = patAlt, noSpeed = true }
-    if distNM > ctrlNm then
-        if (now - lastT) > outerInterval then
-            local hdg = hdgTo(uPos, corners[1].pos)
-            ATC.log(string.format("REVEC %-10s @%s  OUTSIDE -> corner1(%s) hdg=%.0f",
-                unitName, abName, corners[1].name, hdg))
-            ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, now, abName, corners[1].pos, corners[1].name)
-        end
-        return
-    end
-    -- Inside control zone: only act when the plane reaches the next CRP corner.
-    -- No periodic re-vectors between corners.
-    local target        = corners[cornerIdx]
+
+    -- Resolve the current target CRP.
+    local target = corners[cornerIdx]
     if not target then return end
-    local dx            = target.pos.x - uPos.x
-    local dz            = target.pos.z - uPos.z
-    local distToCorner  = math.sqrt(dx * dx + dz * dz) / 1852
-    local baseTolerance = math.max(PATTERN_CORNER_NM, 1.5)
+    local dx           = target.pos.x - uPos.x
+    local dz           = target.pos.z - uPos.z
+    local distToCorner = math.sqrt(dx * dx + dz * dz) / 1852
+
+    -- Compute report tolerance for the current target.
+    local baseTolerance   = math.max(PATTERN_CORNER_NM, 1.5)
     local reportTolerance = baseTolerance
     if cornerIdx == 1 then
         reportTolerance = math.max(baseTolerance, PATTERN_CORNER1_NM)
-    elseif target and target.isCP5 then
-        reportTolerance = PATTERN_CP5_NM
+    elseif target.isCP5 then
+        -- Use the CRP's configured radius if available, else fallback constant.
+        reportTolerance = target.radius and (target.radius / 1852) or PATTERN_CP5_NM
     end
-    local nextIdx = (cornerIdx % #corners) + 1
-    local nextTarget = corners[nextIdx]
-    -- Diagnostic log: show autonomous check values (dist to current CRP)
-    ATC.log(string.format("RPTCHK_AUTO %-10s @%s  corner=%d(%s) distToCorner=%.2fNM reportTolerance=%.2fNM radius=%s",
-        unitName, abName, cornerIdx, target.name, distToCorner, reportTolerance, tostring(target.radius or 'nil')))
-    -- Removed nearest-corner shortcut: only advance when within the
-    -- configured report tolerance for the current target CRP.
+
+    -- Outside the control zone: re-vector toward the CURRENT target (not always CRP1).
+    -- When the aircraft is already past CRP1 in the pattern (cornerIdx > 1), sending
+    -- it back to CRP1 breaks the sequence. Always continue toward whatever CRP is next.
+    if distNM > ctrlNm then
+        if (now - lastT) > outerInterval then
+            local hdg = hdgTo(uPos, target.pos)
+            ATC.log(string.format("REVEC %-10s @%s  OUTSIDE -> corner%d(%s) hdg=%.0f",
+                unitName, abName, cornerIdx, target.name, hdg))
+            ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, now, abName, target.pos, target.name)
+        end
+        return
+    end
+
+    -- Diagnostic log.
+    ATC.log(string.format("RPTCHK_AUTO %-10s @%s  corner=%d(%s) distToCorner=%.2fNM reportTolerance=%.2fNM",
+        unitName, abName, cornerIdx, target.name, distToCorner, reportTolerance))
+
+    -- Within tolerance: advance to the next CRP.
     if distToCorner <= reportTolerance then
         advancePatternCorner(unitName, rec, unit, abName, now, rwy, corners, abPos)
+        return
+    end
+
+    -- Inside the zone but moving away from the current target: re-vector every 30 s.
+    -- This corrects drift without flooding the pilot with instructions.
+    if (now - lastT) > outerInterval then
+        local hdg = hdgTo(uPos, target.pos)
+        ATC.log(string.format("RECOR %-10s @%s  corner%d(%s) dist=%.2fNM -> re-vector hdg=%.0f",
+            unitName, abName, cornerIdx, target.name, distToCorner, hdg))
+        ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, hdg, now, abName, target.pos, target.name)
     end
 end
 function ATC.checkVectoring()

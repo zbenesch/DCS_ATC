@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//k/DCS_ATC/$USERPROFILE/Saved Games/DCS/Mods/Services/DCS-ATC/Scripts/airfields/Caucasus/**)"
+    ]
+  }
+}

@@ -11,7 +11,13 @@ ATC.runways["Gelendzhik"] = { hdg=40, reciprocal=220, elevation=82, ILSfreq=0, p
         { name="Gelendzhik CRP2", seq=2, x=-41646.120220449, y=295881.61513512, radius=2777.3376 },
         { name="Gelendzhik CRP3", seq=3, x=-53918.199332409, y=306762.27650162, radius=2777.3376 },
         { name="Gelendzhik CRP4", seq=4, x=-59495.010887119, y=298771.24245889, radius=2777.3376 },
-        { name="Gelendzhik CRP5", seq=5, x=-58735.485291027, y=294984.52911246, radius=1388.6688 },
-        { name="Gelendzhik CRP6", seq=6, x=-50442.210416444, y=304499.54999657, radius=1388.6688 },
+        { name="Gelendzhik CRP5", seq=5, x=-58078.643502298, y=293552.35036388, radius=1388.6688 },
+        { name="Gelendzhik CRP6", seq=6, x=-48919.39, y=303145.93, radius=1388.6688 },
+    },
+    rwy = {
+        { x=-51104.11, y=297833.04 },
+        { x=-49723.99, y=298991.24 },
+        { x=-49689.35, y=298949.23 },
+        { x=-51068.98, y=297790.65 },
     },
 }

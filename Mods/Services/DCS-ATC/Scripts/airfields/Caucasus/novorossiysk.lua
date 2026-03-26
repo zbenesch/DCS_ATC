@@ -13,8 +13,13 @@ ATC.runways["Novorossiysk"] = { hdg=40, reciprocal=220, elevation=131, ILSfreq=0
         { name="Novorossiysk CRP2", seq=2, x=-32398.91181857, y=275926.45153113, radius=2777.3376 },
         { name="Novorossiysk CRP3", seq=3, x=-40876.226062179, y=288412.01315987, radius=2777.3376 },
         { name="Novorossiysk CRP4", seq=4, x=-49665.357579912, y=281116.982491, radius=2777.3376 },
-        { name="Novorossiysk CRP5", seq=5, x=-49700.199125234, y=277278.41662223, radius=1388.6688 },
-        { name="Novorossiysk CRP6", seq=6, x=-37926.600200767, y=286021.04437342, radius=1388.6688 },
+        { name="Novorossiysk CRP5", seq=5, x=-48323.292532186, y=274106.53784971, radius=1388.6688 },
+        { name="Novorossiysk CRP6", seq=6, x=-36854.25, y=284948.7, radius=1388.6688 },
+    },
+    rwy = {
+        { x=-41610.54, y=278673.84 },
+        { x=-40268.6, y=279878.13 },
+        { x=-40231.09, y=279839.03 },
+        { x=-41570.53, y=278632.36 },
     },
 }
-

@@ -10,11 +10,16 @@ ATC.runways["Tbilisi-Lochini"] = { hdg=130, reciprocal=310, elevation=1624, ILSf
     
     crps = {
         { name="Tbilisi-Lochini CRP1", seq=1, x=-302892.81782513, y=894727.39431623, radius=3703.9296 },
-        { name="Tbilisi-Lochini CRP2", seq=2, x=-314668.16164779, y=905677.24403042, radius=2777.3376 },
-        { name="Tbilisi-Lochini CRP3", seq=3, x=-324769.72267604, y=896788.34515133, radius=2777.3376 },
-        { name="Tbilisi-Lochini CRP4", seq=4, x=-315794.16368834, y=887393.82276717, radius=2777.3376 },
-        { name="Tbilisi-Lochini CRP5", seq=5, x=-311703.23969435, y=888318.07165838, radius=1388.6688 },
-        { name="Tbilisi-Lochini CRP6", seq=6, x=-319991.89328674, y=900319.89068242, radius=1388.6688 },
+        { name="Tbilisi-Lochini CRP2", seq=2, x=-314001.18410776, y=905598.77608453, radius=2777.3376 },
+        { name="Tbilisi-Lochini CRP3", seq=3, x=-324826.07937805, y=896633.36422081, radius=2777.3376 },
+        { name="Tbilisi-Lochini CRP4", seq=4, x=-316242.04757636, y=887468.47008184, radius=2777.3376 },
+        { name="Tbilisi-Lochini CRP5", seq=5, x=-311255.35580633, y=888635.32274573, radius=1388.6688 },
+        { name="Tbilisi-Lochini CRP6", seq=6, x=-322299.51, y=902828.63, radius=1388.6688 },
+    },
+    rwy = {
+        { x=-314671.23, y=895317.75 },
+        { x=-316467.88, y=897617.33 },
+        { x=-316435.35, y=897642.72 },
+        { x=-314639.93, y=895344.37 },
     },
 }
-

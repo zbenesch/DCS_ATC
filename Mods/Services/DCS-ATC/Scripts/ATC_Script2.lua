@@ -310,18 +310,48 @@ function ATC.buildFullMenu(unitName)
     if rec.engagedField then
         local ab = Airbase.getByName(rec.engagedField)
         if ab then
+            local abName = rec.engagedField
             local abPos  = ATC.getAirbasePos(ab)
             local distM  = (abPos and uPos) and ATC.distVec3H(uPos, abPos) or 0
-            local fe = { ab = ab, distM = distM, name = rec.engagedField }
-            ATC.log("BUILD_FULL_MENU: building menu for engagedField=" .. tostring(rec.engagedField))
-            ATC.buildFieldMenu(unitName, fe)
-            local ph = ATC.getPhase(unitName, rec.engagedField)
-            local arrivalEngaged = isArrivalEngaged(rec, rec.engagedField, ph)
-            local postLandingReady = rec.postLandingReady and rec.postLandingReady[rec.engagedField]
-            if not postLandingReady or not arrivalEngaged then
+            local ph     = ATC.getPhase(unitName, abName)
+            local arrivalEngaged  = isArrivalEngaged(rec, abName, ph)
+            local postLandingReady = rec.postLandingReady and rec.postLandingReady[abName]
+            local inAir  = unit:inAir()
+            local spdKt  = ATC.getSpeedKt(unit)
+            local arg    = { unitName = unitName, airbaseName = abName }
+
+            if postLandingReady and not inAir and spdKt and spdKt <= 50 then
+                -- Landed and slowed: single action to vacate
                 missionCommands.addCommandForGroup(rec.groupId,
-                    "Cancel Request with " .. rec.engagedField,
-                    root, ATC.onCancelRequest, { unitName = unitName, airbaseName = rec.engagedField })
+                    "Vacate Runway and Contact Ground",
+                    root, function(a) ATC.onVacatingRunway(a) end, arg)
+
+            elseif arrivalEngaged then
+                -- In-flight arrival: flat items directly at ATC root
+                local towerReady     = rec.towerHandoffReady and rec.towerHandoffReady[abName]
+                local towerCheckedIn = rec.towerCheckedIn    and rec.towerCheckedIn[abName]
+                if towerReady and not towerCheckedIn then
+                    missionCommands.addCommandForGroup(rec.groupId,
+                        "Handoff to Tower",
+                        root, function(a) ATC.onHandoffToTower(a) end, arg)
+                end
+                if towerReady and towerCheckedIn then
+                    missionCommands.addCommandForGroup(rec.groupId,
+                        "Request Landing",
+                        root, function(a) ATC.onRequestLanding(a) end, arg)
+                end
+                missionCommands.addCommandForGroup(rec.groupId,
+                    "Cancel Request",
+                    root, ATC.onCancelRequest, arg)
+
+            else
+                -- Ground / departure: keep the per-field sub-menu
+                local fe = { ab = ab, distM = distM, name = abName }
+                ATC.log("BUILD_FULL_MENU: building menu for engagedField=" .. tostring(abName))
+                ATC.buildFieldMenu(unitName, fe)
+                missionCommands.addCommandForGroup(rec.groupId,
+                    "Cancel Request with " .. abName,
+                    root, ATC.onCancelRequest, arg)
             end
         else
             rec.engagedField = nil
