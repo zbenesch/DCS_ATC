@@ -1,4 +1,4 @@
-ATC.runways["Havadarya"] = { hdg=210, reciprocal=30, elevation=45, ILSfreq=0, patternAlt=0,
+ATC.runways["Havadarya"] = { hdg=210, reciprocal=30, elevation=45, ILSfreq=0, patternAlt=1545,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=118.100, hz=118100000 },

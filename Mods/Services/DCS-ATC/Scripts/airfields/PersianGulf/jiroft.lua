@@ -1,4 +1,4 @@
-ATC.runways["Jiroft"] = { hdg=0, reciprocal=0, elevation=0, ILSfreq=0, patternAlt=0,
+ATC.runways["Jiroft"] = { hdg=0, reciprocal=0, elevation=0, ILSfreq=0, patternAlt=1500,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=0, hz=0 },

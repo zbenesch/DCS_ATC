@@ -17,6 +17,7 @@ ATC.runways["Nalchik"] = {
         departure= { mhz = 0, hz = 0 }
     },
     controllers = { ground = true, tower = true, approach = true, departure = true },
+    patternAlt = 2943, -- elevation (1443) + 1500ft
     crps = {
         { name="Nalchik CRP1", seq=1, x=-125470.99429731, y=773195.9374967, radius=3703.9296 },
         { name="Nalchik CRP2", seq=2, x=-133982.15930418, y=759460.95791936, radius=2777.3376 },

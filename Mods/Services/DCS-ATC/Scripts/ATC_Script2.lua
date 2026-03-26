@@ -185,6 +185,17 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
     local rec = ATC.state.aircraft[unitName]
     if not rec or not rec.menuRoot then return end
     local abName = fieldEntry.name
+    -- Normalize all airfield names for robust lookup
+    if abName then
+        local norm = abName:lower():gsub("[^%w]", "")
+        -- Find the canonical key in ATC.runways
+        for key, _ in pairs(ATC.runways or {}) do
+            if key:lower():gsub("[^%w]", "") == norm then
+                abName = key
+                break
+            end
+        end
+    end
     local distKm = math.floor(fieldEntry.distM / 1000 + 0.5)
     local rwy    = ATC.getRunway(abName)
     local freqStr = (rwy and rwy.frequencies and rwy.frequencies.approach)
@@ -270,6 +281,10 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
 end
 function ATC.buildFullMenu(unitName)
     ATC.log("BUILD_FULL_MENU: called for unit=" .. tostring(unitName))
+    if ATC and ATC.state and ATC.state.aircraft and ATC.state.aircraft[unitName] then
+        local rec = ATC.state.aircraft[unitName]
+        ATC.log("BUILD_FULL_MENU: engagedField=" .. tostring(rec.engagedField))
+    end
     local rec = ATC.state.aircraft[unitName]
     if not rec then
         ATC.log("MENU  buildFullMenu: no rec for " .. tostring(unitName))
@@ -298,6 +313,7 @@ function ATC.buildFullMenu(unitName)
             local abPos  = ATC.getAirbasePos(ab)
             local distM  = (abPos and uPos) and ATC.distVec3H(uPos, abPos) or 0
             local fe = { ab = ab, distM = distM, name = rec.engagedField }
+            ATC.log("BUILD_FULL_MENU: building menu for engagedField=" .. tostring(rec.engagedField))
             ATC.buildFieldMenu(unitName, fe)
             local ph = ATC.getPhase(unitName, rec.engagedField)
             local arrivalEngaged = isArrivalEngaged(rec, rec.engagedField, ph)
@@ -316,6 +332,10 @@ function ATC.buildFullMenu(unitName)
     local nearby = ATC.getNearbyAirbases(uPos, ATC.config.nearRadiusM)
     local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)
     local nameList = {}
+    ATC.log("BUILD_FULL_MENU: nearby airfields count=" .. tostring(#nearby))
+    for i, fe in ipairs(nearby) do
+        ATC.log(string.format("BUILD_FULL_MENU: nearby[%d]=%s distM=%.1f", i, tostring(fe.name), tonumber(fe.distM or -1)))
+    end
     for _, fe in ipairs(nearby) do nameList[#nameList + 1] = fe.name end
     rec.nearbyFields = nameList
     missionCommands.addCommandForGroup(rec.groupId,
@@ -328,24 +348,28 @@ function ATC.buildFullMenu(unitName)
         return
     end
     for _, fe in ipairs(nearby) do
+        ATC.log("BUILD_FULL_MENU: building field menu for " .. tostring(fe.name))
         ATC.buildFieldMenu(unitName, fe)
     end
 end
 function ATC.setPhase(unitName, airbaseName, newPhase)
     local rec = ATC.state.aircraft[unitName]
-    if not rec or airbaseName == nil or airbaseName == "" then return end
-    if rec.phases[airbaseName] == newPhase then return end
-    rec.phases[airbaseName] = newPhase
-    rec.activeField = airbaseName
-    local unit = Unit.getByName(unitName)
-    if not unit then return end
-    local ab    = Airbase.getByName(airbaseName)
-    local bPos  = ab and ATC.getAirbasePos(ab)
-    local uPos  = unit:getPoint()
-    local distM = (bPos and uPos) and ATC.distVec3H(uPos, bPos) or 0
-    ATC.buildFieldMenu(unitName, { ab = ab, distM = distM, name = airbaseName })
-end
-function ATC.onRefreshMenu(unitName)
+    if not rec or not rec.menuRoot then return end
+    local abName = fieldEntry.name
+    ATC.log(string.format("BUILD_FIELD_MENU: unit=%s raw abName=%s", tostring(unitName), tostring(abName)))
+    -- Normalize all airfield names for robust lookup
+    if abName then
+        local norm = abName:lower():gsub("[^%w]", "")
+        ATC.log(string.format("BUILD_FIELD_MENU: normalized abName=%s", norm))
+        -- Find the canonical key in ATC.runways
+        for key, _ in pairs(ATC.runways or {}) do
+            if key:lower():gsub("[^%w]", "") == norm then
+                ATC.log(string.format("BUILD_FIELD_MENU: matched canonical key=%s", key))
+                abName = key
+                break
+            end
+        end
+    end
     local rec = ATC.state.aircraft[unitName]
     if not rec then return end
     local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)

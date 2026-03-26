@@ -6,9 +6,6 @@ ATC.runways["Kutaisi"] = { hdg=80, reciprocal=260, elevation=147, ILSfreq=109.75
         departure= { mhz=124.400, hz=124400000 }
     },
     controllers = { ground=true, tower=true, approach=true, departure=true },
-    
-    
-    
     crps = {
 { name="Kutaisi CRP1", seq=1, x=-278822.6799496, y=672572.13371514, radius=3703.9296 },
 { name="Kutaisi CRP2", seq=2, x=-276800.7401796, y=687899.81844919, radius=2777.3376 },

@@ -1,4 +1,4 @@
-ATC.runways["Lar"] = { hdg=120, reciprocal=300, elevation=2641, ILSfreq=0, patternAlt=0,
+ATC.runways["Lar"] = { hdg=120, reciprocal=300, elevation=2641, ILSfreq=0, patternAlt=4141,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=118.100, hz=118100000 },

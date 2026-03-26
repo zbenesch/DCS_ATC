@@ -1,4 +1,4 @@
-ATC.runways["Sirri Island"] = { hdg=125, reciprocal=305, elevation=26, ILSfreq=0, patternAlt=0,
+ATC.runways["Sirri Island"] = { hdg=125, reciprocal=305, elevation=26, ILSfreq=0, patternAlt=1526,
     frequencies = {
         ground   = { mhz=121.500, hz=121500000 },
         tower    = { mhz=121.720, hz=121720000 },

@@ -138,6 +138,12 @@ function _atcHook.onSimulationStart()
     ]])
     log.write("DCS-ATC", log.INFO, "Radio frequency store injected into SSE")
 
+
+    -- Load core ATC scripts in correct order: ATC_Script.lua FIRST
+    loadFileIntoSSE(base .. "ATC_Script.lua",  "ATC_Script.lua")
+    loadFileIntoSSE(base .. "ATC_Script2.lua", "ATC_Script2.lua")
+    loadFileIntoSSE(base .. "ATC_Script3.lua", "ATC_Script3.lua")
+
     loadFileIntoSSE(base .. "airfields.lua", "airfields.lua")
 
     local airfieldsDir = base .. "airfields\\"
@@ -158,9 +164,6 @@ function _atcHook.onSimulationStart()
     log.write("DCS-ATC", log.INFO, "Loaded " .. tostring(rwyCount) .. " airfield entries")
 
     loadFileIntoSSE(base .. "controllers/phrasedur.lua",  "controllers/phrasedur.lua")
-    loadFileIntoSSE(base .. "ATC_Script.lua",  "ATC_Script.lua")
-    loadFileIntoSSE(base .. "ATC_Script2.lua", "ATC_Script2.lua")
-    loadFileIntoSSE(base .. "ATC_Script3.lua", "ATC_Script3.lua")
 
     local symCheck = net.dostring_in("server", [[
         local function f(n) return type(ATC and ATC[n]) end

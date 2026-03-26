@@ -1,5 +1,5 @@
 ATC.runways["Tunb Island AFB"] = {
-    hdg = 30, reciprocal = 210, elevation = 15, ILSfreq = 0, patternAlt = 0,
+    hdg = 30, reciprocal = 210, elevation = 15, ILSfreq = 0, patternAlt = 1515,
     frequencies = {
         ground    = { mhz = 0, hz = 0 },
         tower     = { mhz = 0, hz = 0 },

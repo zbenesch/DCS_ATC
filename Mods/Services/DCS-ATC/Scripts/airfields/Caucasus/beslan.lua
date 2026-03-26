@@ -1,6 +1,7 @@
 ATC.runways["Beslan"] = {
     icao = "URMS",
     iata = "OGZ",
+    patternAlt = 3171, -- elevation 1671 + 1500
     runways = {
         ["09/27"] = {
             length_m = 3000, width_m = 44, surface = "Hard",

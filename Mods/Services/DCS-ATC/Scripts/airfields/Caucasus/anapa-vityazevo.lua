@@ -1,6 +1,7 @@
 ﻿ATC.runways["Anapa-Vityazevo"] = {
     icao = "URKA",
     iata = "AAQ",
+    patternAlt = 1549, -- elevation 49 + 1500
     runways = {
         ["04/22"] = {
             length_m = 2500, width_m = 49, surface = "Hard",

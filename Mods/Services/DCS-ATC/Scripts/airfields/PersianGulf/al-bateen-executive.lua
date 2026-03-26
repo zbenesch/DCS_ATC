@@ -1,4 +1,4 @@
-ATC.runways["Al Bateen Executive"] = { hdg=130, reciprocal=310, elevation=16, ILSfreq=0, patternAlt=0,
+ATC.runways["Al Bateen Executive"] = { hdg=130, reciprocal=310, elevation=16, ILSfreq=0, patternAlt=1516,
     frequencies = {
         ground   = { mhz=121.900, hz=121900000 },
         tower    = { mhz=118.300, hz=118300000 },

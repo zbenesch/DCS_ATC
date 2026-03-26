@@ -1,4 +1,4 @@
-ATC.runways["Bandar Abbas International"] = { hdg=30, reciprocal=210, elevation=22, ILSfreq=110.1, patternAlt=0,
+ATC.runways["Bandar Abbas International"] = { hdg=30, reciprocal=210, elevation=22, ILSfreq=110.1, patternAlt=1522,
     frequencies = {
         ground   = { mhz=121.900, hz=121900000 },
         tower    = { mhz=118.100, hz=118100000 },

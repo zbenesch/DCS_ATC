@@ -1,4 +1,4 @@
-ATC.runways["Al Ain International"] = { hdg=10, reciprocal=190, elevation=866, ILSfreq=110.1, patternAlt=0,
+ATC.runways["Al Ain International"] = { hdg=10, reciprocal=190, elevation=866, ILSfreq=110.1, patternAlt=2366,
     frequencies = {
         ground   = { mhz=121.900, hz=121900000 },
         tower    = { mhz=118.350, hz=118350000 },

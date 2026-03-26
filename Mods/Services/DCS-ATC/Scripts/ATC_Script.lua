@@ -1,7 +1,91 @@
+-- Debug utility: print/log current radio frequencies for a unit
+function ATC.debugPrintRadioFrequencies(unitName)
+    local freqs = ATC.getRadioFrequencies(unitName)
+    local msg = "[ATC DEBUG] Radio frequencies for '" .. tostring(unitName) .. "': "
+    if not freqs or next(freqs) == nil then
+        msg = msg .. "none found"
+    else
+        local parts = {}
+        for idx, mhz in pairs(freqs) do
+            parts[#parts+1] = string.format("R%d=%.3f MHz", idx, mhz)
+        end
+        msg = msg .. table.concat(parts, ", ")
+    end
+    if ATC and ATC.log then
+        ATC.log(msg)
+    end
+    if trigger and trigger.action and trigger.action.outText then
+        trigger.action.outText(msg, 10)
+    end
+    return msg
+end
+-- Extract tuned radio frequencies for a given unit (player aircraft)
+function ATC.getRadioFrequencies(unitName)
+    -- Returns a table: [radioIdx] = frequency_in_mhz (up to 4 radios)
+    local result = {}
+    if not unitName or type(unitName) ~= "string" then return result end
+    local unit = Unit.getByName(unitName)
+    if not unit or not unit:isExist() then return result end
+    -- Try to get radio data (works for most player aircraft)
+    if unit.getRadio then
+        local radios = unit:getRadio()
+        if radios and type(radios) == "table" then
+            for idx, radio in ipairs(radios) do
+                if radio and radio.frequency then
+                    -- DCS frequencies are in Hz; convert to MHz
+                    local mhz = tonumber(radio.frequency) / 1e6
+                    if mhz and mhz > 10 and mhz < 5000 then
+                        result[idx] = mhz
+                    end
+                end
+            end
+        end
+    end
+    -- Fallback: try to get frequencies from unit:getDesc().radio if available
+    if next(result) == nil and unit.getDesc then
+        local desc = unit:getDesc()
+        if desc and desc.radio and type(desc.radio) == "table" then
+            for idx, radio in ipairs(desc.radio) do
+                if radio and radio.channels and type(radio.channels) == "table" then
+                    -- Use the first channel as the tuned frequency (if no better info)
+                    local ch = radio.channels[1]
+                    if ch and ch.frequency then
+                        local mhz = tonumber(ch.frequency) / 1e6
+                        if mhz and mhz > 10 and mhz < 5000 then
+                            result[idx] = mhz
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return result
+end
 local _scriptsBase = _ATC_BASE or ""
 ATC = ATC or {}
 local _runwaySnapshot = ATC.runways
 ATC.runways = ATC.runways or {}
+
+-- Ensure all airfields are registered under both original and normalized keys
+local function _registerNormalizedRunways()
+    local normalize = function(name)
+        return string.lower(name):gsub("[^%w]", "")
+    end
+    local toAdd = {}
+    for key, value in pairs(ATC.runways) do
+        local norm = normalize(key)
+        if norm ~= key and ATC.runways[norm] == nil then
+            toAdd[#toAdd+1] = {norm, value}
+        end
+    end
+    for _, pair in ipairs(toAdd) do
+        ATC.runways[pair[1]] = pair[2]
+    end
+end
+
+-- Defer normalization until after all airfield files are loaded
+ATC.deferRegisterNormalizedRunways = _registerNormalizedRunways
+
 ATC = ATC or {}
 ATC._timersStarted = nil
 ATC._notificationShown = nil
@@ -19,6 +103,7 @@ function ATC.ensureMenusForCoalition(coalitionID)
     ATC.menuPaths[coalitionID] = ATC.menuPaths[coalitionID] or {}
 end
 ATC.config = {
+        debug = true, -- General-purpose debug logging
     msgDuration        = 10,
     msgDurationLong    = 25,
     nearRadiusM        = 185200,
@@ -73,7 +158,7 @@ ATC.config = {
     vectoringInterval = 25,
     ilsHandoffNM = 8,
     defaultPatternAltFt = 1500,
-    voiceDebug = false,
+    voiceDebug = true,
     voiceDebugToGroup = true,
     disableVoice = true,  -- when true, disable tokenization and radioTransmission audio
     magvarCaucasus = 6,   -- Caucasus / Black Sea
@@ -81,6 +166,25 @@ ATC.config = {
     magvarSyria = 4,      -- Syria
     magvarDefault = 0,    -- Default fallback
 }
+
+-- At the end of the main script, after all airfields are loaded, call this to re-add normalized keys:
+if ATC.deferRegisterNormalizedRunways then
+    ATC.deferRegisterNormalizedRunways()
+    -- Debug: print all keys in ATC.runways after normalization
+    if ATC and ATC.runways then
+        local keys = {}
+        for k, _ in pairs(ATC.runways) do keys[#keys+1] = k end
+        table.sort(keys)
+        ATC.log("DEBUG ATC.runways keys after normalization: " .. table.concat(keys, ", "))
+    end
+end
+
+
+
+function ATC.debugLog(msg)
+    if not (ATC and ATC.config and ATC.config.debug) then return end
+    ATC.log("DEBUG " .. tostring(msg))
+end
 
 function ATC.voiceDebug(groupId, msg)
     if not (ATC and ATC.config and ATC.config.voiceDebug) then return end
@@ -272,24 +376,34 @@ end
 
 function ATC.getRunway(abName)
     local rdata = (ATC.runways and next(ATC.runways) ~= nil) and ATC.runways or _runwaySnapshot
-    if not rdata or not abName then return nil end
+    if not rdata or not abName then
+        ATC.debugLog(string.format("getRunway: abName=nil or rdata=nil (abName=%s)", tostring(abName)))
+        return nil
+    end
     local exact = rdata[abName]
-    if exact then return exact end
+    if exact then
+        ATC.debugLog(string.format("getRunway: exact match for '%s'", tostring(abName)))
+        return exact
+    end
 
     local norm = normalizeAirbaseName(abName)
+    ATC.debugLog(string.format("getRunway: normalized '%s' -> '%s'", tostring(abName), tostring(norm)))
     if not norm then return nil end
 
     local aliasKey = _AIRBASE_ALIASES[norm]
     if aliasKey and rdata[aliasKey] then
+        ATC.debugLog(string.format("getRunway: aliasKey match '%s' -> '%s'", norm, aliasKey))
         return rdata[aliasKey]
     end
 
     for key, value in pairs(rdata) do
         if normalizeAirbaseName(key) == norm then
+            ATC.debugLog(string.format("getRunway: normalized key match '%s' <-> '%s'", key, abName))
             return value
         end
     end
 
+    ATC.debugLog(string.format("getRunway: no match for '%s' (norm='%s')", tostring(abName), tostring(norm)))
     return nil
 end
 function ATC.distVec3(a, b)
@@ -452,8 +566,6 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
     -- Returns true if on correct freq, false otherwise
     if not unitName or not airbaseName or not controller then return false end
     opts = opts or {}
-    local allowNoRadioBypass = (opts.allowNoRadioBypass ~= false)
-    
     local rec = ATC.state.aircraft and ATC.state.aircraft[unitName]
     local groupId = rec and rec.groupId or nil
     local rwy = ATC.getRunway(airbaseName)
@@ -463,7 +575,7 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
             tostring(airbaseName), tostring(controller)))
         return false  -- No frequency defined for this controller
     end
-    
+
     local requiredFreqMhz = rwy.frequencies[controller].mhz
     if not requiredFreqMhz then
         ATC.voiceDebug(groupId, string.format(
@@ -471,43 +583,50 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
             tostring(airbaseName), tostring(controller)))
         return false
     end
-    
+
     -- Get current radio frequencies from telemetry
     local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
     local radios = telem and telem.radios
-    -- If no radio data has arrived yet, allow the request through
-    -- (export hook may still be initialising).  Log, but don't block.
     local hasRadioData = radios and next(radios) ~= nil
     if not hasRadioData then
-        if allowNoRadioBypass then
-            ATC.voiceDebug(groupId, string.format(
-                "%s freq-check BYPASS (no radio data) controller=%s required=%.3f",
-                tostring(unitName), tostring(controller), requiredFreqMhz))
-            return true
-        end
         ATC.voiceDebug(groupId, string.format(
-            "%s freq-check NO RADIO DATA controller=%s required=%.3f",
+            "%s freq-check BLOCKED (no radio data) controller=%s required=%.3f",
             tostring(unitName), tostring(controller), requiredFreqMhz))
+        -- Extra debug: dump telemetry and rec
+        ATC.voiceDebug(groupId, string.format(
+            "TELEMETRY: %s", tostring(telem)))
+        ATC.voiceDebug(groupId, string.format(
+            "REC: %s", tostring(rec)))
         return false
     end
-    
+
     -- Check if ANY radio is tuned to the correct frequency (±0.05 MHz tolerance)
     local tolerance = 0.05
+    local matched = false
     for radioIdx = 1, 4 do
         local currentFreqMhz = radios[radioIdx]
         if currentFreqMhz and math.abs(currentFreqMhz - requiredFreqMhz) < tolerance then
             ATC.voiceDebug(groupId, string.format(
                 "%s %s OK required=%.3f tuned=%.3f radios=[%s]",
                 tostring(unitName), tostring(controller), requiredFreqMhz, currentFreqMhz, fmtRadioList(radios)))
-            return true
+            matched = true
+            break
         end
     end
-
-    ATC.voiceDebug(groupId, string.format(
-        "%s %s FAIL required=%.3f radios=[%s]",
-        tostring(unitName), tostring(controller), requiredFreqMhz, fmtRadioList(radios)))
-    
-    return false
+    if not matched then
+        -- Log all tuned radios for debug
+        local radioList = {}
+        for radioIdx = 1, 4 do
+            local f = radios[radioIdx]
+            if f then
+                table.insert(radioList, string.format("R%d=%.6f", radioIdx, f))
+            end
+        end
+        ATC.voiceDebug(groupId, string.format(
+            "%s %s FAIL required=%.6f radios=[%s]",
+            tostring(unitName), tostring(controller), requiredFreqMhz, table.concat(radioList, ", ")))
+    end
+    return matched
 end
 
 function ATC.ttsClean(text)

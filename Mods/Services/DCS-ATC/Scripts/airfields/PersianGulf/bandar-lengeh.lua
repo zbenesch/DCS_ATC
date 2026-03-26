@@ -1,4 +1,4 @@
-ATC.runways["Bandar Lengeh"] = { hdg=90, reciprocal=270, elevation=67, ILSfreq=0, patternAlt=0,
+ATC.runways["Bandar Lengeh"] = { hdg=90, reciprocal=270, elevation=67, ILSfreq=0, patternAlt=1567,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=118.100, hz=118100000 },

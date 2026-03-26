@@ -1,4 +1,4 @@
-ATC.runways["Liwa Air Base"] = { hdg=130, reciprocal=310, elevation=400, ILSfreq=0, patternAlt=0,
+ATC.runways["Liwa Air Base"] = { hdg=130, reciprocal=310, elevation=400, ILSfreq=0, patternAlt=1900,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=0, hz=0 },

@@ -1,4 +1,6 @@
+
 ATC = ATC or {}
+ATC.state = ATC.state or { aircraft = {}, airfields = {}, telemetry = {} }
 local _runwaySnapshot = ATC.runways  -- watchdog snapshot for this chunk
 
 -- Constants used by pattern / glideslope logic in this chunk

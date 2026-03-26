@@ -1,4 +1,4 @@
-ATC.runways["Sas Al Nakheel"] = { hdg=130, reciprocal=310, elevation=20, ILSfreq=0, patternAlt=0,
+ATC.runways["Sas Al Nakheel"] = { hdg=130, reciprocal=310, elevation=20, ILSfreq=0, patternAlt=1520,
     frequencies = {
         ground   = { mhz=0, hz=0 },
         tower    = { mhz=0, hz=0 },
