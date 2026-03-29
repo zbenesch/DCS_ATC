@@ -328,14 +328,12 @@ function ATC.buildFullMenu(unitName)
 
             elseif arrivalEngaged then
                 -- In-flight arrival: flat items directly at ATC root
-                local towerReady     = rec.towerHandoffReady and rec.towerHandoffReady[abName]
-                local towerCheckedIn = rec.towerCheckedIn    and rec.towerCheckedIn[abName]
-                if towerReady and not towerCheckedIn then
+                local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[abName]
+                if not towerCheckedIn then
                     missionCommands.addCommandForGroup(rec.groupId,
                         "Handoff to Tower",
                         root, function(a) ATC.onHandoffToTower(a) end, arg)
-                end
-                if towerReady and towerCheckedIn then
+                else
                     missionCommands.addCommandForGroup(rec.groupId,
                         "Request Landing",
                         root, function(a) ATC.onRequestLanding(a) end, arg)
@@ -689,7 +687,7 @@ function ATC.onInboundRequest(arg)
                 turnDir = "Fly"
             end
             firstVectorLine = string.format(
-                "\n%s heading %s for %.1f NM, %s %d ft. Report next CRP.",
+                "\n%s heading %s for %.1f NM, %s %d ft.",
                 turnDir, ATC.fmtHdg(magHdg),
                 legDistNm,
                 (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
@@ -706,13 +704,11 @@ function ATC.onInboundRequest(arg)
     local qfeHpa = getQfeHpa(rwy)
     local qfeInHg = qfeHpa * 0.02953
     local isRussian = isRussianAircraft(unitName)
-    local qfeText, qfeVoice
+    local qfeText
     if isRussian then
         qfeText = string.format("QFE %d.", qfeHpa)
-        qfeVoice = string.format("QFE %d.", qfeHpa)
     else
         qfeText = string.format("QFE %.2f.", qfeInHg)
-        qfeVoice = string.format("QFE %.2f.", qfeInHg)
     end
     local response = string.format(
         "%s"
@@ -728,26 +724,24 @@ function ATC.onInboundRequest(arg)
         firstVectorLine)
     local responseVoice = string.format(
         "%s"
-        .. "Radar contact. %s out at %s.\n"
-        .. "%s\n"
+        .. "Radar contact. "
+        .. "You are %s %s of %s. "
+        .. "%s "
         .. "You are number %s for landing.%s",
         greeting,
         distStr,
-        altStr,
-        qfeVoice,
+        bearingText or "",
+        spokenField,
+        qfeText,
         ATC.sequenceNumber(seqN),
         firstVectorVoice)
     ATC.setPhase(unitName, airbaseName, "inbound")
     local initialCallText = string.format(
         "%s approach, %s inbound for landing.\n%s at %s.",
         spokenField, cs, distStr, altStr)
-    local initialCallVoice = string.format(
-        "%s approach, %s inbound for landing.\n%s at %s.",
-        spokenField, cs, distStr, altStr)
-    -- Suppress voice for pilot's initial call
-    ATC.radioMsgCustom(rec.groupId, abPos, initialCallText, initialCallVoice, false, airbaseName, "Approach", true)
-    local introDur = math.max(ATC.ttsDuration(initialCallVoice), 3)
-    local t1       = timer.getTime() + introDur + 1.5
+    -- Show pilot's call as text only — no voice, fixed 3 s display
+    trigger.action.outTextForGroup(rec.groupId, initialCallText, 3, false)
+    local t1 = timer.getTime() + 4.5
     local respDur  = ATC.ttsDuration(responseVoice)
     timer.scheduleFunction(function(p)
         local r  = ATC.state.aircraft[p.unitName]

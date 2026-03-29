@@ -9,6 +9,15 @@
     converts to OGG Vorbis (mono 44100 Hz), and patches the Lua duration manifest
     back into ATC_Script.lua between PHRASE_DUR_START / PHRASE_DUR_END markers.
 
+    Voice assignment (one voice per controller role):
+      daniel  -> Approach   (British male, calm broadcaster)
+      adam    -> Tower      (American male, firm authority)
+      alice   -> Ground     (British female, professional)
+      gary    -> Departure  (Australian male, narrator)
+
+    ALL phrases are generated for ALL four voices so any controller can utter
+    any token (digits, callsigns, airfield names, etc.).
+
 .PARAMETER ApiKey
     ElevenLabs API key.  Required.
 
@@ -27,7 +36,6 @@
     Skip the radio bandpass filter - output clean TTS audio.
 
 .EXAMPLE
-    .\Generate-Phrases.ps1 -ApiKey "sk_..."
     .\Generate-Phrases.ps1 -ApiKey "sk_..." -FFmpeg "E:\downloader\ffmpeg.exe"
 #>
 param(
@@ -41,7 +49,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# -- Verify FFmpeg / FFprobe ---------------------------------------------------
+# -- Verify FFmpeg -----------------------------------------------------------
 try { Start-Process -FilePath $FFmpeg -ArgumentList "-version" `
         -Wait -NoNewWindow `
         -RedirectStandardOutput "$env:TEMP\ffver.txt" `
@@ -51,74 +59,23 @@ catch {
     exit 1
 }
 
-# -- Radio effect filter chain -------------------------------------------------
+# -- Radio effect filter chain -----------------------------------------------
 # Narrow-band AM radio: 300-3400 Hz bandpass + slight treble clarity boost.
-# This is applied during MP3 -> OGG conversion.
 $RadioFilter = "highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
 
-# -- ElevenLabs voice definitions ----------------------------------------------
-# folder-key must match the voice folder names referenced in ATC_Script.lua
+# -- ElevenLabs voice definitions (folder name -> voice ID) ------------------
+# Folder names must match the values in _ROLE_VOICE in ATC_Script.lua.
 $Voices = [ordered]@{
-    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel - British male, broadcaster
-    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam   - American male, firm
-    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice  - British female, professional
-    "gary"  = "QLOrGSLtlFUlfQRSaOtQ"   # Gary  - Australian male, narrator
+    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel - British male, calm broadcaster  -> Approach
+    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam   - American male, firm authority   -> Tower
+    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice  - British female, professional    -> Ground
+    "gary"   = "QLOrGSLtlFUlfQRSaOtQ"   # Gary   - Australian male, narrator       -> Departure
 }
 
-# Phrase frequency mapping: token-name -> frequency
-$PhraseFrequency = [ordered]@{
-    # Approach
-    "approach" = "approach"
-    "continue-approach" = "approach"
-    "expect-vectors-to-runway" = "approach"
-    "radar-contact" = "approach"
-    "descend-to" = "approach"
-    "climb-to" = "approach"
-    "report-final" = "approach"
-    "cleared-for-the-approach" = "approach"
-    "established-on-final" = "approach"
-    "turn-final-heading" = "approach"
-    "base-heading" = "approach"
-    "abeam-the-threshold" = "approach"
-    "on-base-runway" = "approach"
-    "maintain" = "approach"
-    "initial" = "approach"
-    "straight-in" = "approach"
-    "on-downwind" = "approach"
-    "crosswind" = "approach"
-    # Tower
-    "tower" = "tower"
-    "request-takeoff" = "tower"
-    "ready-for-departure" = "tower"
-    "request-landing" = "tower"
-    "on-this-frequency" = "tower"
-    "from-threshold" = "tower"
-    "runway-clear" = "tower"
-    "you-are-number" = "tower"
-    "slow-to-approach-speed" = "tower"
-    "check-gear-down-and-locked" = "tower"
-    "go-around-go-around" = "tower"
-    "airspeed-critically-low" = "tower"
-    "climb-immediately-runway-heading" = "tower"
-    # Ground
-    "ground" = "ground"
-    "request-startup" = "ground"
-    "request-taxi" = "ground"
-    "hold" = "ground"
-    "expect" = "ground"
-    # Add more mappings as needed
-}
-
-# Voice assignment by frequency
-$FrequencyVoice = [ordered]@{
-    "approach" = "daniel"
-    "tower" = "adam"
-    "ground" = "alice"
-}
-
-# -- Phrases dictionary: token-name -> spoken text ----------------------------
+# -- Phrases dictionary: token-name -> spoken text ---------------------------
+# ALL tokens are generated for ALL voices (any controller may say any token).
 $Phrases = [ordered]@{
-    # -- Digits (ATC pronunciation) --------------------------------------------
+    # -- Digits (ATC pronunciation) ------------------------------------------
     "zero"   = "zero"
     "one"    = "one"
     "two"    = "two"
@@ -130,18 +87,27 @@ $Phrases = [ordered]@{
     "eight"  = "eight"
     "niner"  = "niner"
 
-    # -- Units -----------------------------------------------------------------
+    # -- Units ---------------------------------------------------------------
     "feet"           = "feet"
     "knots"          = "knots"
     "nautical-miles" = "nautical miles"
+    "point"          = "point"
+    "thousand"       = "thousand"
+    "hundred"        = "hundred"
+    "landing"        = "landing"
 
-    # -- Controller roles ------------------------------------------------------
+    # -- Time-of-day greetings -----------------------------------------------
+    "good-morning"   = "good morning"
+    "good-afternoon" = "good afternoon"
+    "good-evening"   = "good evening"
+
+    # -- Controller role names -----------------------------------------------
     "approach"  = "approach"
     "tower"     = "tower"
     "ground"    = "ground"
     "departure" = "departure"
 
-    # -- Individual connector words --------------------------------------------
+    # -- Connector words -----------------------------------------------------
     "contact" = "contact"
     "runway"  = "runway"
     "left"    = "left"
@@ -156,8 +122,26 @@ $Phrases = [ordered]@{
     "for"     = "for"
     "hold"    = "hold"
     "expect"  = "expect"
+    "climb"   = "climb"
+    "descend" = "descend"
+    "to"      = "to"
+    "you"     = "you"
+    "are"     = "are"
+    "on"      = "on"
+    "of"      = "of"
+    "from"    = "from"
+    "with"    = "with"
+    "MHz"       = "megahertz"
+    "north"     = "north"
+    "south"     = "south"
+    "east"      = "east"
+    "west"      = "west"
+    "northeast" = "northeast"
+    "northwest" = "northwest"
+    "southeast" = "southeast"
+    "southwest" = "southwest"
 
-    # -- Heading instruction chunks --------------------------------------------
+    # -- Heading instruction chunks ------------------------------------------
     "fly-heading"         = "fly heading"
     "turn-left-heading"   = "turn left heading"
     "turn-right-heading"  = "turn right heading"
@@ -167,7 +151,7 @@ $Phrases = [ordered]@{
     "reduce-speed-to"     = "reduce speed to"
     "increase-speed-to"   = "increase speed to"
 
-    # -- Pattern advisories ---------------------------------------------------
+    # -- Pattern advisories -------------------------------------------------
     "abeam-the-threshold"  = "abeam the threshold"
     "on-base-runway"       = "on base, runway"
     "base-heading"         = "base heading"
@@ -179,28 +163,45 @@ $Phrases = [ordered]@{
     "on-downwind"          = "on downwind"
     "crosswind"            = "crosswind"
 
-    # -- Approach clearance ---------------------------------------------------
+    # -- Approach clearance / vectors ---------------------------------------
     "cleared-for-the-approach"   = "cleared for the approach"
     "runway-clear"               = "runway clear"
     "you-are-number"             = "you are number"
     "report-final"               = "report final"
     "radar-contact"              = "radar contact"
     "expect-vectors-to-runway"   = "expect vectors to runway"
+    "report-15-NM"               = "report fifteen nautical miles"
 
-    # -- Tower handoff --------------------------------------------------------
-    "on-this-frequency" = "on this frequency"
-    "from-threshold"    = "from threshold"
+    # -- Tower handoff / check-in ------------------------------------------
+    "on-this-frequency"  = "on this frequency"
+    "from-threshold"     = "from threshold"
+    "contact-tower"      = "contact tower"
 
-    # -- Gear / speed reminder ------------------------------------------------
+    # -- Landing / ground ops ----------------------------------------------
+    "cleared-to-land"            = "cleared to land"
+    "wind"                       = "wind"
     "slow-to-approach-speed"     = "slow to approach speed"
     "check-gear-down-and-locked" = "check gear down and locked"
+    "runway-occupied"            = "runway occupied"
+    "return-to-pattern"          = "return to pattern and await clearance"
+    "vacate-runway"              = "vacate runway and contact ground"
 
-    # -- Emergency / go-around ------------------------------------------------
+    # -- Departure / startup -----------------------------------------------
+    "startup-clearance"          = "startup clearance granted"
+    "contact-ground"             = "contact ground when ready to taxi"
+    "fly-heading-climb"          = "fly heading"
+    "climb-to-5000"              = "climb to five thousand feet"
+    "cleared-for-takeoff"        = "cleared for takeoff"
+    "wind-calm"                  = "wind calm"
+
+    # -- Emergency / go-around --------------------------------------------
     "go-around-go-around"             = "go around, go around"
     "airspeed-critically-low"         = "airspeed critically low"
     "climb-immediately-runway-heading" = "climb immediately, runway heading"
+    "missed-approach"                 = "missed approach"
+    "correct-approach"                = "correct your approach, deviation from glideslope"
 
-    # -- NATO phonetic alphabet -----------------------------------------------
+    # -- NATO phonetic alphabet -------------------------------------------
     "alpha"    = "alpha"
     "bravo"    = "bravo"
     "charlie"  = "charlie"
@@ -228,7 +229,7 @@ $Phrases = [ordered]@{
     "yankee"   = "yankee"
     "zulu"     = "zulu"
 
-    # -- Common DCS player callsign words -------------------------------------
+    # -- Common DCS player callsign words ---------------------------------
     "enfield"     = "enfield"
     "springfield" = "springfield"
     "uzi"         = "uzi"
@@ -265,7 +266,7 @@ $Phrases = [ordered]@{
     "storm"       = "storm"
     "talon"       = "talon"
 
-    # -- Caucasus airfield words -----------------------------------------------
+    # -- Caucasus airfield words ------------------------------------------
     "batumi"       = "batumi"
     "kobuleti"     = "kobuleti"
     "kutaisi"      = "kutaisi"
@@ -293,7 +294,7 @@ $Phrases = [ordered]@{
     "maykop"       = "maykop"
     "pashkovsky"   = "pashkovsky"
 
-    # -- Persian Gulf airfield words ------------------------------------------
+    # -- Persian Gulf airfield words --------------------------------------
     "abu"      = "abu"
     "dhabi"    = "dhabi"
     "ain"      = "ain"
@@ -318,7 +319,7 @@ $Phrases = [ordered]@{
     "sirri"    = "sirri"
     "musa"     = "musa"
 
-    # -- Syria / other theater words ------------------------------------------
+    # -- Syria / other theater words --------------------------------------
     "incirlik"   = "incirlik"
     "akrotiri"   = "akrotiri"
     "hatay"      = "hatay"
@@ -345,11 +346,9 @@ $Phrases = [ordered]@{
     "normandy"   = "normandy"
 }
 
-# -- Helper: get audio duration using ffmpeg -i (no ffprobe needed) ------------
+# -- Helper: get audio duration using ffmpeg -i -----------------------------
 function Get-AudioDuration([string]$Path) {
     $tmpErr = "$env:TEMP\ffmpeg_info_err.txt"
-    # ffmpeg -i <file> with no output file always exits 1, but writes
-    # stream metadata (including Duration) to stderr.
     Start-Process -FilePath $FFmpeg `
         -ArgumentList "-i `"$Path`"" `
         -Wait -NoNewWindow `
@@ -364,7 +363,7 @@ function Get-AudioDuration([string]$Path) {
     return 0.5
 }
 
-# -- Helper: call ElevenLabs TTS with retry on rate-limit ---------------------
+# -- Helper: call ElevenLabs TTS with retry on rate-limit ------------------
 function Invoke-ElevenLabsTTS {
     param([string]$Text, [string]$VoiceId, [string]$OutPath)
 
@@ -374,7 +373,7 @@ function Invoke-ElevenLabsTTS {
         voice_settings = @{
             stability        = 0.75
             similarity_boost = 0.85
-            style            = 0.0   # no style exaggeration for clean ATC delivery
+            style            = 0.0
             use_speaker_boost = $true
         }
     } | ConvertTo-Json -Depth 5
@@ -406,80 +405,83 @@ function Invoke-ElevenLabsTTS {
     }
 }
 
-# -- Main generation loop ------------------------------------------------------
+# -- Main generation loop: ALL voices x ALL phrases ------------------------
 $durations  = @{}
 $totalFiles = $Voices.Count * $Phrases.Count
 $done       = 0
 
 $radioNote = if ($NoRadioEffect) { "(no radio effect)" } else { "(radio effect ON)" }
-Write-Host "`nGenerating $totalFiles clips for $($Voices.Count) voices $radioNote" -ForegroundColor Cyan
+Write-Host "`nGenerating $totalFiles clips ($($Voices.Count) voices x $($Phrases.Count) phrases) $radioNote" -ForegroundColor Cyan
 
-foreach ($phrase in $Phrases.GetEnumerator()) {
-    $token   = $phrase.Key
-    $text    = $phrase.Value
-    $frequency = $PhraseFrequency[$token]
-    if (-not $frequency) { continue }
-    $voiceKey = $FrequencyVoice[$frequency]
-    $voiceId = $Voices[$voiceKey]
+foreach ($voiceEntry in $Voices.GetEnumerator()) {
+    $voiceKey = $voiceEntry.Key
+    $voiceId  = $voiceEntry.Value
     $voiceDir = Join-Path $OutDir $voiceKey
     New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
-    $mp3Path = Join-Path $voiceDir "$token.mp3"
-    $oggPath = Join-Path $voiceDir "$token.ogg"
 
-    # Skip if OGG already exists and is non-empty (resume support)
-    if ((Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
-        $dur = Get-AudioDuration $oggPath
+    Write-Host "`n  Voice: $voiceKey" -ForegroundColor Yellow
+
+    foreach ($phrase in $Phrases.GetEnumerator()) {
+        $token   = $phrase.Key
+        $text    = $phrase.Value
+        $mp3Path = Join-Path $voiceDir "$token.mp3"
+        $oggPath = Join-Path $voiceDir "$token.ogg"
+
+        # Skip if OGG already exists and is non-empty (resume support)
+        if ((Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
+            $dur = Get-AudioDuration $oggPath
+            $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
+            $done++
+            continue
+        }
+
+        # Call ElevenLabs API
+        try {
+            Invoke-ElevenLabsTTS -Text $text -VoiceId $voiceId -OutPath $mp3Path
+        } catch {
+            Write-Warning "  ElevenLabs failed for '$voiceKey/$token': $_"
+            $done++
+            continue
+        }
+
+        # Get duration from the MP3
+        $dur = Get-AudioDuration $mp3Path
+
+        # Build FFmpeg argument list
+        if ($NoRadioEffect) {
+            $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+        } else {
+            $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+        }
+
+        $proc = Start-Process -FilePath $FFmpeg `
+            -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
+            -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
+            -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
+
+        if ($proc.ExitCode -ne 0) {
+            $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
+            Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
+        }
+
+        Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
+
         $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
         $done++
-        continue
+
+        Write-Progress -Activity "Generating phrases" `
+            -Status "$voiceKey/$token  ($done / $totalFiles)" `
+            -PercentComplete ([int](100 * $done / $totalFiles))
+
+        # Small pause to be polite to the API
+        Start-Sleep -Milliseconds 150
     }
-
-    # Call ElevenLabs API
-    try {
-        Invoke-ElevenLabsTTS -Text $text -VoiceId $voiceId -OutPath $mp3Path
-    } catch {
-        Write-Warning "  ElevenLabs failed for '$token': $_"
-        $done++
-        continue
-    }
-
-    # Get duration from the MP3
-    $dur = Get-AudioDuration $mp3Path
-
-    # Build FFmpeg argument list
-    if ($NoRadioEffect) {
-        $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
-    } else {
-        $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
-    }
-
-    $proc = Start-Process -FilePath $FFmpeg `
-        -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
-        -Wait -PassThru -NoNewWindow `
-        -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
-        -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
-
-    if ($proc.ExitCode -ne 0) {
-        $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
-        Write-Warning "  FFmpeg failed for '$token' (exit $($proc.ExitCode)): $errText"
-    }
-
-    Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
-
-    $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
-    $done++
-
-    Write-Progress -Activity "Generating phrases" `
-        -Status "$voiceKey/$token  ($done / $totalFiles)" `
-        -PercentComplete ([int](100 * $done / $totalFiles))
-
-    # Small pause to be polite to the API
-    Start-Sleep -Milliseconds 150
 }
 
 Write-Progress -Activity "Generating phrases" -Completed
 
-# -- Scan all existing OGGs for durations (covers tokens skipped by frequency filter) --
+# -- Scan all existing OGGs for any missed durations -----------------------
 foreach ($vk in $Voices.Keys) {
     $vDir = Join-Path $OutDir $vk
     if (-not (Test-Path $vDir)) { continue }
@@ -493,7 +495,7 @@ foreach ($vk in $Voices.Keys) {
 
 Write-Host "`nGenerated $($durations.Count) clips into: $OutDir" -ForegroundColor Green
 
-# -- Build Lua duration table --------------------------------------------------
+# -- Build Lua duration table ----------------------------------------------
 $lines = [System.Collections.Generic.List[string]]::new()
 $lines.Add("-- PHRASE_DUR_START (auto-generated by Generate-Phrases.ps1 - do not edit manually)")
 $lines.Add("ATC._phraseDur = {")
@@ -505,7 +507,7 @@ $lines.Add("-- PHRASE_DUR_END")
 
 $manifest = $lines -join "`n"
 
-# -- Patch ATC_Script.lua ------------------------------------------------------
+# -- Patch ATC_Script.lua --------------------------------------------------
 if (Test-Path $ScriptPath) {
     $src = [System.IO.File]::ReadAllText($ScriptPath)
     if ($src -match '(?s)-- PHRASE_DUR_START.*?-- PHRASE_DUR_END') {
@@ -518,4 +520,4 @@ if (Test-Path $ScriptPath) {
     }
 }
 
-Write-Host "`nDone." -ForegroundColor Yellow
+Write-Host "`nDone.  Run Inject-Mission.ps1 to embed OGGs into your .miz file." -ForegroundColor Yellow

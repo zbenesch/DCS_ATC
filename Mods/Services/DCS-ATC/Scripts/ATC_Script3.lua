@@ -1089,7 +1089,8 @@ function ATC.checkVectoring()
                 rec.report15ReminderSent = rec.report15ReminderSent or {}
                 if distNM and distNM <= 15
                    and not rec.report15Done[abName]
-                   and not rec.report15ReminderSent[abName] then
+                   and not rec.report15ReminderSent[abName]
+                   and not (rec.seqNum and rec.seqNum[abName]) then
                     local abPos = ab and ATC.getAirbasePos(ab)
                     local fieldName = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(abName) or abName
                     ATC.radioMsg(rec.groupId, abPos, string.format(

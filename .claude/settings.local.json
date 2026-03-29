@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Read(//k/DCS_ATC/$USERPROFILE/Saved Games/DCS/Mods/Services/DCS-ATC/Scripts/airfields/Caucasus/**)"
+      "Read(//k/DCS_ATC/$USERPROFILE/Saved Games/DCS/Mods/Services/DCS-ATC/Scripts/airfields/Caucasus/**)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"Generate-Phrases.ps1\" -ApiKey \"sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5\" -FFmpeg \"E:\\\\downloader\\\\ffmpeg.exe\")",
+      "Bash(cp -r \"k:/phrases/daniel\" \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/\")",
+      "Bash(cp -r \"k:/phrases/adam\" \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/\")",
+      "Bash(cp -r \"k:/phrases/alice\" \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/\")",
+      "Bash(cp -r \"k:/phrases/gary\" \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"k:/DCS_ATC/Mods/Services/DCS-ATC/Generate-Phrases.ps1\" -ApiKey \"sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5\" -FFmpeg \"E:\\\\downloader\\\\ffmpeg.exe\" -OutDir \"k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\phrases\" -ScriptPath \"k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script.lua\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \":*)",
+      "Bash(\"E:/downloader/ffmpeg.exe\" -y -i \"E:/Chrome_Download/ElevenLabs_2026-03-28T15_50_14_Daniel - Clean, Balanced and Clear_pvc_sp95_s50_sb75_f2-5.mp3\" -ar 44100 -ac 1 -c:a libvorbis -q:a 4 \"E:/Chrome_Download/anapa.ogg\")",
+      "Bash(\"E:/downloader/ffmpeg.exe\" -y -i \"E:/Chrome_Download/ElevenLabs_2026-03-28T16_31_15_Adam - Dominant, Firm_pre_sp100_s50_sb75_f2-5.mp3\" -af \"highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4\" -ar 44100 -ac 1 -c:a libvorbis -q:a 4 \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/adam/number.ogg\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"Generate-Phrases.ps1\" -ApiKey \"sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5\" -FFmpeg \"E:/downloader/ffmpeg.exe\" -OutDir \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases\" -ScriptPath \"k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/ATC_Script.lua\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"\\(Get-Content ''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\).Count\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"Get-ChildItem ''k:/DCS_ATC'' -Filter ''*.miz'' -Recurse | Select-Object FullName\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"Get-ChildItem ''C:/Users/benes/Documents'' -Filter ''*.miz'' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"Get-ChildItem ''C:/Users/benes'' -Filter ''*.miz'' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName\")",
+      "Bash(python3 -c \":*)",
+      "Bash(lua5.1 -e \"dofile\\(''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\)\")",
+      "Bash(luajit -e \"dofile\\(''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\)\")"
     ]
   }
 }
