@@ -1,4 +1,4 @@
-﻿ATC = ATC or {}
+ATC = ATC or {}
 ATC._phraseDur = {
     ["adam/abbas"] = 0.84,
     ["adam/abeam-the-threshold"] = 1.49,
@@ -948,6 +948,7 @@ ATC._phraseDur = {
     ["gary/zero"] = 0.93,
     ["gary/zulu"] = 0.88,
 }
+
 ATC._PSUBS = {
     {"go around, go around",              "__go_around_go_around__"},
     {"go around. go around",              "__go_around_go_around__"},

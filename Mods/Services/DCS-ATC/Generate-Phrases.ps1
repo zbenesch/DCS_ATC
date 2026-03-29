@@ -43,7 +43,10 @@ param(
     [string]$OutDir     = "$PSScriptRoot\phrases",
     [string]$ScriptPath = "$PSScriptRoot\Scripts\ATC_Script.lua",
     [string]$FFmpeg     = "ffmpeg",
-    [switch]$NoRadioEffect
+    [switch]$NoRadioEffect,
+    [switch]$Force,               # Re-generate even if OGG already exists
+    [double]$TtsSpeed   = 1.15,   # ElevenLabs speaking rate (0.7-1.2; 1.0 = normal)
+    [double]$Atempo     = 1.0     # FFmpeg post-process speed (1.0 = off, 1.1 = 10% faster)
 )
 
 Set-StrictMode -Version Latest
@@ -61,7 +64,11 @@ catch {
 
 # -- Radio effect filter chain -----------------------------------------------
 # Narrow-band AM radio: 300-3400 Hz bandpass + slight treble clarity boost.
-$RadioFilter = "highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
+# Silence trim (remove leading/trailing silence from TTS clips) + narrow-band AM radio effect.
+# The double silenceremove+areverse removes both leading AND trailing silence.
+$SilenceTrim  = "silenceremove=start_periods=1:start_threshold=-45dB:start_duration=0.02,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_duration=0.02,areverse"
+$AtempoFilter = if ($Atempo -ne 1.0) { ",atempo=$Atempo" } else { "" }
+$RadioFilter  = "$SilenceTrim$AtempoFilter,highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
 
 # -- ElevenLabs voice definitions (folder name -> voice ID) ------------------
 # Folder names must match the values in _ROLE_VOICE in ATC_Script.lua.
@@ -375,6 +382,7 @@ function Invoke-ElevenLabsTTS {
             similarity_boost = 0.85
             style            = 0.0
             use_speaker_boost = $true
+            speed            = $TtsSpeed
         }
     } | ConvertTo-Json -Depth 5
 
@@ -427,8 +435,8 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
         $mp3Path = Join-Path $voiceDir "$token.mp3"
         $oggPath = Join-Path $voiceDir "$token.ogg"
 
-        # Skip if OGG already exists and is non-empty (resume support)
-        if ((Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
+        # Skip if OGG already exists and is non-empty (resume support); -Force overrides
+        if (-not $Force -and (Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
             $dur = Get-AudioDuration $oggPath
             $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
             $done++

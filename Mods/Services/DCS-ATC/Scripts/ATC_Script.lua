@@ -1642,17 +1642,6 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modul
     local seqId = _phraseSeqId
     ATC.voiceDebug(groupId, string.format(
         "TX seq=%d voice=%s tokens=%d", seqId, tostring(voice), #tokens))
-    -- DEBUG: show token count + first tokens on screen so we can see tokenizer output
-    if ATC.config.voiceDebug and groupId then
-        local preview = {}
-        for i = 1, math.min(6, #tokens) do preview[i] = tokens[i] end
-        trigger.action.outTextForGroup(groupId,
-            string.format("[ATC DBG] seq%d %s: %d tokens: %s%s",
-                seqId, tostring(voice), #tokens,
-                table.concat(preview, " "),
-                #tokens > 6 and "..." or ""),
-            6, false)
-    end
     local t = startT
     local phraseDur = ATC._phraseDur or {}
     for i, token in ipairs(tokens) do
@@ -1672,7 +1661,7 @@ function ATC.scheduleTokens(groupId, abPos, freqHz, tokens, voice, startT, modul
             trigger.action.radioTransmission(_p, _pos, _m, false, _f, _w, _n)
             return nil
         end, nil, t)
-        t = t + dur + 0.01   -- 10 ms gap between clips
+        t = t + dur + 0.005  -- 5 ms gap between clips (clips are silence-trimmed)
     end
 end
 
