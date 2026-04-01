@@ -13,8 +13,8 @@ ATC.runways["Vaziani"] = { hdg=130, reciprocal=310, elevation=1523, ILSfreq=117.
         { name="Vaziani CRP2", seq=2, x=-318685.66365478, y=912306.89194268, radius=2777.3376 },
         { name="Vaziani CRP3", seq=3, x=-328229.93032252, y=903562.84981253, radius=2777.3376 },
         { name="Vaziani CRP4", seq=4, x=-320646.93687447, y=894118.83981083, radius=2777.3376 },
-        { name="Vaziani CRP5", seq=5, x=-313649.13104622, y=895790.11530536, radius=1388.6688 },
-        { name="Vaziani CRP6", seq=6, x=-326508.38, y=908454.21, radius=1388.6688 },
+        { name="Vaziani CRP5", seq=5, x=-316440.181, y=894224.864, radius=1388.6688 },
+        { name="Vaziani CRP6", seq=6, x=-327149.564, y=907492.426, radius=1388.6688 },
     },
     rwy = {
         { x=-318194.72, y=902258.44 },

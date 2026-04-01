@@ -13,8 +13,8 @@ ATC.runways["Tbilisi-Lochini"] = { hdg=130, reciprocal=310, elevation=1624, ILSf
         { name="Tbilisi-Lochini CRP2", seq=2, x=-314001.18410776, y=905598.77608453, radius=2777.3376 },
         { name="Tbilisi-Lochini CRP3", seq=3, x=-324826.07937805, y=896633.36422081, radius=2777.3376 },
         { name="Tbilisi-Lochini CRP4", seq=4, x=-316242.04757636, y=887468.47008184, radius=2777.3376 },
-        { name="Tbilisi-Lochini CRP5", seq=5, x=-311255.35580633, y=888635.32274573, radius=1388.6688 },
-        { name="Tbilisi-Lochini CRP6", seq=6, x=-322299.51, y=902828.63, radius=1388.6688 },
+        { name="Tbilisi-Lochini CRP5", seq=5, x=-312122.844, y=887880.985, radius=1388.6688 },
+        { name="Tbilisi-Lochini CRP6", seq=6, x=-323393.302, y=900565.618, radius=1388.6688 },
     },
     rwy = {
         { x=-314671.23, y=895317.75 },

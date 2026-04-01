@@ -11,8 +11,8 @@ ATC.runways["Kutaisi"] = { hdg=80, reciprocal=260, elevation=147, ILSfreq=109.75
         { name="Kutaisi CRP2", seq=2, x=-276800.7401796, y=687899.81844919, radius=2777.3376 },
         { name="Kutaisi CRP3", seq=3, x=-288659.68154716, y=692153.18554198, radius=2777.3376 },
         { name="Kutaisi CRP4", seq=4, x=-292858.55444873, y=679128.03668062, radius=2777.3376 },
-        { name="Kutaisi CRP5", seq=5, x=-288701.28114137, y=675642.32406347, radius=1388.6688 },
-        { name="Kutaisi CRP6", seq=6, x=-283809.68, y=692940.6, radius=1388.6688 },
+        { name="Kutaisi CRP5", seq=5, x=-290172.369, y=675943.776, radius=1388.6688 },
+        { name="Kutaisi CRP6", seq=6, x=-284604.118, y=693240.721, radius=1388.6688 },
     },
     rwy = {
         { x=-285260.17, y=682657.68 },

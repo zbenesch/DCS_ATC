@@ -13,8 +13,8 @@ ATC.runways["Beslan"] = {
         { name="Beslan CRP2", seq=2, x=-142540.95651036, y=850483.75397445, radius=2777.3376 },
         { name="Beslan CRP3", seq=3, x=-154867.02191507, y=850196.49658943, radius=2777.3376 },
         { name="Beslan CRP4", seq=4, x=-154547.74667461, y=836787.76287501, radius=2777.3376 },
-        { name="Beslan CRP5", seq=5, x=-149446.86443044, y=834565.09823299, radius=1388.6688 },
-        { name="Beslan CRP6", seq=6, x=-150722.72, y=852537.19, radius=1388.6688 },
+        { name="Beslan CRP5", seq=5, x=-150751.11, y=835086.796, radius=1388.6688 },
+        { name="Beslan CRP6", seq=6, x=-151412.111, y=852406.761, radius=1388.6688 },
     },
     rwy = {
         { x=-148520.77, y=842156.11 },

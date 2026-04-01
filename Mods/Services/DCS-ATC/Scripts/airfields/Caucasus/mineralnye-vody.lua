@@ -13,8 +13,8 @@ ATC.runways["Mineralnye Vody"] = { hdg=120, reciprocal=300, elevation=1049, ILSf
         { name="Mineralnye Vody CRP2", seq=2, x=-60050.842975842, y=708346.97526997, radius=2777.3376 },
         { name="Mineralnye Vody CRP3", seq=3, x=-48765.037891696, y=714554.37975765, radius=2777.3376 },
         { name="Mineralnye Vody CRP4", seq=4, x=-42513.597471842, y=702882.29952257, radius=2777.3376 },
-        { name="Mineralnye Vody CRP5", seq=5, x=-46061.400456876, y=698065.70282999, radius=1388.6688 },
-        { name="Mineralnye Vody CRP6", seq=6, x=-53725.21, y=714408.38, radius=1388.6688 },
+        { name="Mineralnye Vody CRP5", seq=5, x=-44438.776, y=699132.634, radius=1388.6688 },
+        { name="Mineralnye Vody CRP6", seq=6, x=-52969.466, y=714430.612, radius=1388.6688 },
     },
     rwy = {
         { x=-50416.9, y=703880.88 },

@@ -13,8 +13,8 @@ ATC.runways["Krymsk"] = { hdg=40, reciprocal=220, elevation=65, ILSfreq=0, patte
         { name="Krymsk CRP2", seq=2, x=2521.5175376656, y=293623.05375871, radius=2777.3376 },
         { name="Krymsk CRP3", seq=3, x=-6511.2800715551, y=303454.7172553, radius=2777.3376 },
         { name="Krymsk CRP4", seq=4, x=-15710.443021371, y=294673.39094925, radius=2777.3376 },
-        { name="Krymsk CRP5", seq=5, x=-14501.663211876, y=289713.61997895, radius=1388.6688 },
-        { name="Krymsk CRP6", seq=6, x=-671.28, y=301132.15, radius=1388.6688 },
+        { name="Krymsk CRP5", seq=5, x=-14843.227, y=290548.553, radius=1388.6688 },
+        { name="Krymsk CRP6", seq=6, x=-2691.815, y=301706.169, radius=1388.6688 },
     },
     rwy = {
         { x=-7605.54, y=293579.15 },

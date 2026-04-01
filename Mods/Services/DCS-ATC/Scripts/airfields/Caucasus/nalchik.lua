@@ -13,8 +13,8 @@ ATC.runways["Nalchik"] = {
         { name="Nalchik CRP2", seq=2, x=-133982.15930418, y=759460.95791936, radius=2777.3376 },
         { name="Nalchik CRP3", seq=3, x=-122427.13131764, y=751547.01660229, radius=2777.3376 },
         { name="Nalchik CRP4", seq=4, x=-115909.00503697, y=761486.22845749, radius=2777.3376 },
-        { name="Nalchik CRP5", seq=5, x=-118610.39004772, y=767059.28395647, radius=1388.6688 },
-        { name="Nalchik CRP6", seq=6, x=-127922.52, y=751798.44, radius=1388.6688 },
+        { name="Nalchik CRP5", seq=5, x=-117623.27, y=765314.197, radius=1388.6688 },
+        { name="Nalchik CRP6", seq=6, x=-126567.704, y=751725.598, radius=1388.6688 },
     },
     rwy = {
         { x=-125588.23, y=759518.38 },

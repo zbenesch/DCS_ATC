@@ -13,8 +13,8 @@ ATC.runways["Krasnodar-Pashkovsky"] = { hdg=40, reciprocal=220, elevation=98, IL
         { name="Krasnodar-Pashkovsky CRP2", seq=2, x=7140.1609957667, y=396978.8412753, radius=2777.3376 },
         { name="Krasnodar-Pashkovsky CRP3", seq=3, x=16790.868107515, y=388987.32839511, radius=2777.3376 },
         { name="Krasnodar-Pashkovsky CRP4", seq=4, x=9389.8336703723, y=378919.57703206, radius=2777.3376 },
-        { name="Krasnodar-Pashkovsky CRP5", seq=5, x=2609.9986477848, y=380387.87708577, radius=1388.6688 },
-        { name="Krasnodar-Pashkovsky CRP6", seq=6, x=14926.35, y=393519.36, radius=1388.6688 },
+        { name="Krasnodar-Pashkovsky CRP5", seq=5, x=5269.596, y=379745.141, radius=1388.6688 },
+        { name="Krasnodar-Pashkovsky CRP6", seq=6, x=15369.615, y=392787.971, radius=1388.6688 },
     },
     rwy = {
         { x=6640.91, y=386769.57 },
