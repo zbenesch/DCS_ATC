@@ -1818,15 +1818,27 @@ function ATC.textToTokens(text)
     return tokens
 end
 local _PHRASE_VOICES = { "adam", "alice", "daniel", "gary", "david", "diane", "olivia", "brad" }
-local _ROLE_VOICE = {
-    approach  = "daniel",   -- British male, calm broadcaster
-    tower     = "adam",     -- American male, firm authority
-    ground    = "alice",    -- British female, professional
-    departure = "gary",     -- Australian male, narrator
-}
+
+-- Randomly assign a unique voice to each controller role on mission load.
+-- Fisher-Yates shuffle over the pool; first N entries go to the roles.
+local function _buildRoleVoices()
+    local roles = { "approach", "tower", "ground", "departure" }
+    local pool  = {}
+    for _, v in ipairs(_PHRASE_VOICES) do pool[#pool + 1] = v end
+    for i = #pool, 2, -1 do
+        local j = math.random(1, i)
+        pool[i], pool[j] = pool[j], pool[i]
+    end
+    local t = {}
+    for i, r in ipairs(roles) do t[r] = pool[i] end
+    return t
+end
+local _ROLE_VOICE = _buildRoleVoices()
+
 function ATC.getStationVoice(abName, role)
     local r = role and role:lower()
     if _ROLE_VOICE[r] then return _ROLE_VOICE[r] end
+    -- Fallback for any unlisted controller type: hash to a voice.
     local s = (abName or "") .. (role or "")
     local h = 0
     for i = 1, #s do h = h + string.byte(s, i) end

@@ -102,7 +102,8 @@ local _skinSub    = nil
 local _skinHint   = nil
 
 local _isCreated  = false
-local _isOpen     = false
+local _isOpen     = false   -- visible (floating or pinned)
+local _isPinned   = false   -- pinned = visible but click-through (no cursor)
 local _curMenu    = nil
 local _prevMenu   = nil
 local _playerName = nil
@@ -334,9 +335,10 @@ local function _renderMenu()
     local c    = atcOverlay.config
     local back = _keyLabel(c.key_back)
     local tog  = _keyLabel(c.key_toggle)
+    local togAction = _isPinned and "Close" or "Pin"
     local hint = _prevMenu
-        and (back .. "=Back    " .. tog .. "=Close")
-        or  ("Num1-9=Select    " .. tog .. "=Close")
+        and (back .. "=Back    " .. tog .. "=" .. togAction)
+        or  ("Num1-9=Select    " .. tog .. "=" .. togAction)
     _statics.hint:setSkin(_skinHint)
     _statics.hint:setBounds(8, yOff + 2, CONT_W, HINT_H)
     _statics.hint:setText(hint)
@@ -367,14 +369,23 @@ local function _openNow()
         return
     end
 
-    _isOpen = true
+    _isOpen   = true
+    _isPinned = false
     _log("opened ok, player=" .. tostring(_playerName) .. " items=" .. #_curMenu.items)
     _box:setVisible(true)
+    _window:setHasCursor(true)
     _renderMenu()
+end
+
+local function _pinNow()
+    _isPinned = true
+    _renderMenu()   -- refresh hint: "Close" instead of "Pin"
+    _log("pinned")
 end
 
 local function _closeNow()
     _isOpen   = false
+    _isPinned = false
     _curMenu  = nil
     _prevMenu = nil
     _box:setVisible(false)
@@ -459,7 +470,7 @@ local function _createWindow()
             "select "..i)
     end
 
-    _addHK(c.key_back,   function() if _isOpen then _pendingBack = true end end, "back")
+    _addHK(c.key_back,   function() if _isOpen then _pendingBack   = true end end, "back")
 
     -- ── Position tracking ─────────────────────────────────────────────────────
     _window:addPositionCallback(function()
@@ -495,8 +506,14 @@ function atcOverlay.onFrame()
 
     if _pendingToggle then
         _pendingToggle = false
-        _log("toggle: _isOpen=" .. tostring(_isOpen))
-        if _isOpen then _closeNow() else _openNow() end
+        _log("toggle: _isOpen=" .. tostring(_isOpen) .. " _isPinned=" .. tostring(_isPinned))
+        if not _isOpen then
+            _openNow()          -- hidden  → floating
+        elseif not _isPinned then
+            _pinNow()           -- floating → pinned
+        else
+            _closeNow()         -- pinned  → hidden
+        end
 
     elseif _pendingSelect then
         local n = _pendingSelect; _pendingSelect = nil
@@ -511,7 +528,7 @@ end
 function atcOverlay.onSimStop()
     _isCreated = false; _window = nil; _box = nil; _statics = {}
     _skinTitle = nil; _skinItem = nil; _skinSub = nil; _skinHint = nil
-    _isOpen = false; _curMenu = nil; _prevMenu = nil
+    _isOpen = false; _isPinned = false; _curMenu = nil; _prevMenu = nil
     _pendingToggle = false; _pendingSelect = nil; _pendingBack = false
 end
 
