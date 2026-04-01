@@ -604,7 +604,7 @@ function ATC.onInboundRequest(arg)
     local firstVectorLine = ""
     local firstVectorVoice = ""
     local rwy     = ATC.getRunway(airbaseName)
-    local corners = rwy and ATC.getPatternCorners(rwy)
+    local corners = rwy and ATC.getPatternCorners(rwy, airbaseName)
     local abPos = ATC.getAirbasePos(ab)
     local uPos = unit:getPoint()
     local bearingText = (abPos and uPos and ATC.getBearingText(abPos, uPos)) or nil
@@ -1174,7 +1174,7 @@ function ATC.checkAndClearNext(airbaseName)
     local rwyC      = ATC.getRunway(airbaseName)
     if abPos and rwyC then
         local legPos = telemPos or (nextUnit and nextUnit:getPoint()) or nil
-        local corners = rwyC and ATC.getPatternCorners(rwyC)
+        local corners = rwyC and ATC.getPatternCorners(rwyC, airbaseName)
         local patternIdx = nextRec.patternCornerIdx and nextRec.patternCornerIdx[airbaseName]
         local isAtCRP5 = false
         if corners and patternIdx and corners[patternIdx] and corners[patternIdx].seq == 5 then

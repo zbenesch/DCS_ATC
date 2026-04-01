@@ -12,6 +12,27 @@ function ATC.getWind(abPos)
 	return 0, 0
 end
 
+-- Returns the active runway magnetic heading and whether it is the reciprocal.
+-- Uses the headwind component: the runway end with more headwind is preferred.
+function ATC.getActiveRwyHdg(abName)
+	local rwy = ATC.runways and ATC.runways[abName]
+	if not rwy then return nil, false end
+	local ab    = Airbase and Airbase.getByName and Airbase.getByName(abName)
+	local abPos = ab and ATC.getAirbasePos and ATC.getAirbasePos(ab)
+	local windDir, windSpd = ATC.getWind(abPos)
+	local function headwind(hdg)
+		local diff = math.abs(hdg - windDir)
+		if diff > 180 then diff = 360 - diff end
+		return windSpd * math.cos(math.rad(diff))
+	end
+	local recipHdg = rwy.reciprocal or ((rwy.hdg + 180) % 360)
+	if headwind(rwy.hdg) >= headwind(recipHdg) then
+		return rwy.hdg, false
+	else
+		return recipHdg, true
+	end
+end
+
 function ATC.isRunwayClear(abName)
 	local fs = ATC.state and ATC.state.airfields and ATC.state.airfields[abName]
 	if not fs or not fs.rwyClear then return false end
