@@ -14,7 +14,7 @@ ATC.runways["Sochi-Adler"] = { hdg=60, reciprocal=240, elevation=98, ILSfreq=111
         { name="Sochi-Adler CRP3", seq=3, x=-166250.50152346, y=471187.12385959, radius=2777.3376 },
         { name="Sochi-Adler CRP4", seq=4, x=-173582.96906195, y=461333.65042794, radius=2777.3376 },
         { name="Sochi-Adler CRP5", seq=5, x=-172066.206, y=457428.594, radius=1388.6688 },
-        { name="Sochi-Adler CRP6", seq=6, x=-161610.82, y=470963.93, radius=1388.6688 },
+        { name="Sochi-Adler CRP6", seq=6, x=-162048.40957036, y=471960.65959348, radius=1388.6688 },
     },
     rwy = {
         { x=-165243.05, y=460886.16 },
