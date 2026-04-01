@@ -909,13 +909,18 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
         local finalMagHdg = ATC.fmtHdg(ATC.toMag(inboundHdg))
         rec.handedOffToTower = rec.handedOffToTower or {}
         if not rec.handedOffToTower[abName] then
-            ATC.radioMsg(rec.groupId, abPos, string.format(
+            local finalText = string.format(
                 "%sTurn final heading %s, maintain %d ft. Contact %s Tower on %s. Report final.",
-                controllerCall(unitName, abName, "Approach"), finalMagHdg, finalGate.altFt, spokenField, freqStr),
-                false, abName, "Approach")
-            ATC.msg(rec.groupId, string.format(
-                "%s, switching to %s Tower, have a great day.",
-                cs, spokenField), true, abName, "Approach")
+                controllerCall(unitName, abName, "Approach"), finalMagHdg, finalGate.altFt, spokenField, freqStr)
+            ATC.radioMsg(rec.groupId, abPos, finalText, false, abName, "Approach")
+            -- Delay the goodbye until the final message has finished playing
+            local finalDur = ATC.ttsDuration(finalText)
+            local goodbyeText = string.format("%s, switching to %s Tower, have a great day.", cs, spokenField)
+            local p = { groupId = rec.groupId, text = goodbyeText, abName = abName }
+            timer.scheduleFunction(function(arg)
+                ATC.msg(arg.groupId, arg.text, true, arg.abName, "Approach")
+                return nil
+            end, p, timer.getTime() + finalDur + 0.5)
         end
         rec.lastVector[abName] = now
         rec.towerHandoffReady = rec.towerHandoffReady or {}
