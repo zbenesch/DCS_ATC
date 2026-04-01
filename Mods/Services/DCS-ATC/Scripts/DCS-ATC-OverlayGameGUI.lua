@@ -379,7 +379,8 @@ end
 
 local function _pinNow()
     _isPinned = true
-    _renderMenu()   -- refresh hint: "Close" instead of "Pin"
+    _window:setHasCursor(false)   -- click-through; position locked from floating state
+    _renderMenu()                 -- refresh hint: "Close" instead of "Pin"
     _log("pinned")
 end
 

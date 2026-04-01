@@ -1039,7 +1039,7 @@ local function drivePatternForUnit(unitName, rec, unit, abName, now)
     local patAlt    = rec.patternAlt[abName]
     local ctrlNm    = rwy.ctrlZoneNm or 8
     local lastT        = rec.lastVector[abName] or 0
-    local outerInterval = 30   -- re-announce only every 30 s while outside the control zone
+    local outerInterval = 45   -- re-announce every 45 s (outer zone and inside-zone drift correction)
     local cornerIdx = (rec.patternCornerIdx and rec.patternCornerIdx[abName]) or 1
     local floorAlt  = getPatternFloorAlt(rwy)
     ATC.log(string.format("CVEC  %-10s @%s  ph=%s  dist=%.1fNM  alt=%d  corner=%d",
