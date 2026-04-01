@@ -1203,6 +1203,19 @@ function ATC.getDaytimeGreeting()
     elseif hour < 18 then return "Good afternoon"
     else return "Good evening" end
 end
+function ATC.getDaytimeFarewell()
+    local hour = 12
+    if env and env.mission and env.mission.date and env.mission.start_time then
+        local t = env.mission.start_time
+        hour = math.floor((t / 3600) % 24)
+    elseif timer and timer.getAbsTime then
+        hour = math.floor((timer.getAbsTime() / 3600) % 24)
+    end
+    if hour < 12 then return "Have a good morning."
+    elseif hour < 18 then return "Have a good afternoon."
+    elseif hour < 21 then return "Have a good day."
+    else return "Have a good evening." end
+end
 function ATC.getPhase(unitName, airbaseName)
     local rec = ATC.state.aircraft[unitName]
     if not rec then return "unknown" end
@@ -1687,6 +1700,33 @@ local function altToWords(n)
     return table.concat(parts, " ")
 end
 
+-- Spoken number words for distances and QFE (not ICAO digit pronunciation)
+local _WORD_NUMS = {
+    [0]="zero",[1]="one",[2]="two",[3]="three",[4]="four",[5]="five",
+    [6]="six",[7]="seven",[8]="eight",[9]="nine",[10]="ten",
+    [11]="eleven",[12]="twelve",[13]="thirteen",[14]="fourteen",
+    [15]="fifteen",[16]="sixteen",[17]="seventeen",[18]="eighteen",
+    [19]="nineteen",[20]="twenty",[30]="thirty",[40]="forty",[50]="fifty",
+    [60]="sixty",[70]="seventy",[80]="eighty",[90]="ninety",
+}
+-- Convert integer 0-99 to spoken word(s); nil-safe
+local function numToWordStr(n)
+    n = math.floor(n or 0)
+    if n < 0 then n = 0 end
+    if _WORD_NUMS[n] then return _WORD_NUMS[n] end
+    local tens  = math.floor(n / 10) * 10
+    local units = n % 10
+    return (_WORD_NUMS[tens] or tostring(tens)) .. " " .. (_WORD_NUMS[units] or tostring(units))
+end
+-- Convert NM distance to spoken words (1-50); >50 → outside-airspace token
+-- Rounding: .5 rounds DOWN, .6 rounds UP  (math.floor(x + 0.4))
+local function nmToWordStr(x)
+    local n = math.floor(x + 0.4)
+    if n < 1 then n = 1 end
+    if n > 50 then return "__outside_my_airspace__" end
+    return numToWordStr(n)
+end
+
 function ATC.textToTokens(text)
     if ATC and ATC.config and ATC.config.disableVoice then return {} end
     if not text or text == "" then return {} end
@@ -1698,12 +1738,33 @@ function ATC.textToTokens(text)
     end
     -- Altitude: "4500 ft" -> "four thousand five hundred ft" (before ft->feet)
     text = text:gsub("(%d+) ft", function(n) return altToWords(n) .. " ft" end)
-    -- NM distances: keep decimal as "point": "5.6 nm" -> "5 point 6 nm"
-    text = text:gsub("(%d+)%.(%d+) nm", "%1 point %2 nm")
+    -- NM distances: round to integer, expand to spoken word(s) + nautical-miles
+    -- Handles "15.3 nm", "15 nm"; replaces decimal form too (no "point" in output)
+    text = text:gsub("(%d+%.%d+) nm", function(s)
+        return nmToWordStr(tonumber(s) or 1) .. " nautical-miles"
+    end)
+    text = text:gsub("(%d+) nm", function(s)
+        return nmToWordStr(tonumber(s) or 1) .. " nautical-miles"
+    end)
+    -- Short-distance "miles" (used in vector instructions): same rounding, no outside-airspace cap
+    text = text:gsub("(%d+%.%d+) miles", function(s)
+        local n = math.floor((tonumber(s) or 1) + 0.4)
+        if n < 1 then n = 1 end
+        return numToWordStr(math.min(n, 50)) .. " miles"
+    end)
+    text = text:gsub("(%d+) miles", function(s)
+        local n = tonumber(s) or 1
+        return numToWordStr(math.min(n, 50)) .. " miles"
+    end)
+    -- QFE inHg: "qfe 29.83" -> "qfe twenty nine decimal eighty three"
+    text = text:gsub("qfe (%d+)%.(%d+)", function(intS, fracS)
+        return "qfe " .. numToWordStr(tonumber(intS) or 0) ..
+               " decimal " .. numToWordStr(tonumber(fracS) or 0)
+    end)
+    -- QFE hPa (integer, Russian): "qfe 970" -> "qfe nine seven zero" (digit split kept)
     text = text:gsub(" kt", " knots")
     text = text:gsub(" ft", " feet")
-    text = text:gsub(" nm", " nautical-miles")
-    -- General decimals (QFE, etc.): "29.83" -> "29 point 83"
+    -- General decimals (non-NM, non-QFE): "120.1" -> "120 point 1"
     text = text:gsub("(%d+)%.(%d+)", "%1 point %2")
     text = text:gsub("[%.,!%;:%?%(%)%[%]]", " ")
     text = text:gsub("%s+", " ")
@@ -1756,7 +1817,7 @@ function ATC.textToTokens(text)
     end
     return tokens
 end
-local _PHRASE_VOICES = { "adam", "alice", "daniel", "gary" }
+local _PHRASE_VOICES = { "adam", "alice", "daniel", "gary", "david", "diane", "olivia", "brad" }
 local _ROLE_VOICE = {
     approach  = "daniel",   -- British male, calm broadcaster
     tower     = "adam",     -- American male, firm authority

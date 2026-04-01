@@ -20,6 +20,16 @@ _atcHook._simRunning     = false
 _atcHook._lastRadioDebug  = nil
 _atcHook._lastRadioPollDiag = 0
 
+-- Load the overlay script into this Lua state (sets global atcOverlay).
+-- Failures are non-fatal: ATC continues without the overlay.
+do
+    local overlayPath = lfs.writedir() .. "Mods\\Services\\DCS-ATC\\Scripts\\DCS-ATC-OverlayGameGUI.lua"
+    local ok, err = pcall(dofile, overlayPath)
+    if not ok then
+        log.write("DCS-ATC", log.WARNING, "Overlay load failed: " .. tostring(err))
+    end
+end
+
 local function loadFileIntoSSE(path, label)
     local f = io.open(path, "r")
     if not f then
@@ -109,7 +119,7 @@ local _EXPORT_FRAME_INJECT = [[
             cmd = cmd .. 'ATC.setRadioFrequencies("' .. safe .. '", ' .. tbl .. ') '
         end
         cmd = cmd .. 'end'
-        pcall(net.dostring_in, "server", cmd)
+        pcall(function() net.dostring_in("server", cmd) end)
     end
     return "ok"
 ]]
@@ -227,6 +237,15 @@ function _atcHook.onSimulationFrame()
     if now == _atcHook._lastRadioPoll then return end
     _atcHook._lastRadioPoll = now
 
+    -- Drive overlay window creation and deferred hotkey actions (1 Hz).
+    -- Must be before the rawResult early-return so it runs even without radio data.
+    if atcOverlay then
+        local ok_ov, err_ov = pcall(atcOverlay.onFrame)
+        if not ok_ov then
+            log.write("DCS-ATC", log.WARNING, "overlay onFrame error: " .. tostring(err_ov))
+        end
+    end
+
     local ok_r, rb1, rb2 = pcall(net.dostring_in, "export",
         "return (_dcsatc_radioResult or '')")
     if not ok_r then return end
@@ -280,6 +299,7 @@ function _atcHook.onSimulationStop()
     _atcHook._startPending = false
     _atcHook._frameCount   = 0
     _atcHook._simRunning   = false
+    if atcOverlay then pcall(atcOverlay.onSimStop) end
 end
 
 DCS.setUserCallbacks(_atcHook)

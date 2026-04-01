@@ -565,6 +565,17 @@ function ATC.onInboundRequest(arg)
     local distNM = ATC.distUnitToBase(unit, ab)
     local altFt  = ATC.getAltAglFt(unit)
     local spokenField = ATC.getSpokenAirbaseName and ATC.getSpokenAirbaseName(airbaseName) or airbaseName
+    -- Outside-airspace check: >50 NM → play single OGG and disengage
+    if distNM and distNM > 50 then
+        local abPos2 = ab and ATC.getAirbasePos and ATC.getAirbasePos(ab)
+        -- Voice text = only the compound token so the single OGG plays once cleanly.
+        -- The full sentence is shown on screen; the OGG already contains the full phrase.
+        ATC.radioMsgCustom(rec.groupId, abPos2,
+            "You are outside my airspace. Contact me again within 50 miles.",
+            "outside my airspace",
+            false, airbaseName, "Approach")
+        return
+    end
     local safePatternCornerIdx = tostring((rec.patternCornerIdx and rec.patternCornerIdx[airbaseName]) or 'nil')
     local safePhases = tostring((rec.phases and rec.phases[airbaseName]) or 'nil')
     ATC.log(string.format("INBD_HANDLER: state: patternCornerIdx=%s, phases=%s", safePatternCornerIdx, safePhases))
@@ -659,9 +670,9 @@ function ATC.onInboundRequest(arg)
                 turnDir = "Fly"
             end
             firstVectorLine = string.format(
-                "\n%s final heading %s for %.1f NM, %s %d ft. Contact tower.",
+                "\n%s final heading %s for %d miles, %s %d ft. Contact tower.",
                 turnDir, ATC.fmtHdg(magHdg),
-                legDistNm,
+                math.max(1, math.floor(legDistNm + 0.4)),
                 (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
                 slotAlt)
             firstVectorVoice = firstVectorLine
@@ -687,9 +698,9 @@ function ATC.onInboundRequest(arg)
                 turnDir = "Fly"
             end
             firstVectorLine = string.format(
-                "\n%s heading %s for %.1f NM, %s %d ft.",
+                "\n%s heading %s for %d miles, %s %d ft.",
                 turnDir, ATC.fmtHdg(magHdg),
-                legDistNm,
+                math.max(1, math.floor(legDistNm + 0.4)),
                 (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
                 slotAlt)
             firstVectorVoice = firstVectorLine
@@ -1179,8 +1190,8 @@ function ATC.checkAndClearNext(airbaseName)
     ATC.radioMsg(nextRec.groupId, abPos, string.format(
         "%s"                                                       ..
         "Cleared for the approach.  "                             ..
-        "Contact %s Tower on %s, report final.",
-        preamble(nextName, airbaseName, "Approach"), airbaseName, freqStr), false, airbaseName, "Approach")
+        "Contact %s Tower on %s.  %s",
+        preamble(nextName, airbaseName, "Approach"), airbaseName, freqStr, ATC.getDaytimeFarewell()), false, airbaseName, "Approach")
     if not nextRec.landingCleared then nextRec.landingCleared = {} end
     nextRec.landingCleared[airbaseName] = true
     ATC.setPhase(nextName, airbaseName, "approach")
@@ -1231,4 +1242,146 @@ function ATC.onDepartureContact(arg)
         "%s\nDeparture, fly heading %03d, climb to 5000 ft.", cs, heading))
     ATC.setPhase(unitName, airbaseName, "departure")
     ATC.setEngagedField(unitName, airbaseName)
+end
+
+-- ─── Overlay menu JSON API ─────────────────────────────────────────────────────
+-- Called by DCS-ATC-OverlayGameGUI.lua via net.dostring_in("server", ...).
+-- Returns a JSON string so the overlay can render a numbered menu without F10.
+
+local function _jStr(s)
+    return '"' .. tostring(s or ""):gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '') .. '"'
+end
+
+local function _jItem(item)
+    local parts = {}
+    for k, v in pairs(item) do
+        local enc
+        if     type(v) == "string"  then enc = _jStr(v)
+        elseif type(v) == "boolean" then enc = v and "true" or "false"
+        elseif type(v) == "number"  then enc = tostring(v)
+        else                             enc = "null"
+        end
+        parts[#parts + 1] = _jStr(k) .. ":" .. enc
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- Build item list for a player currently engaged with an airfield.
+local function _overlayEngagedItems(rec, playerName, abName)
+    local items = {}
+    local unit   = Unit.getByName(playerName)
+    local inAir  = unit and unit:inAir() or false
+    local spdKt  = unit and ATC.getSpeedKt(unit) or nil
+    local ph     = ATC.getPhase(playerName, abName)
+    local postLanding = rec.postLandingReady and rec.postLandingReady[abName]
+    local arrived     = isArrivalEngaged(rec, abName, ph)
+
+    local function addCmd(label, fn)
+        items[#items + 1] = {
+            kind  = "cmd",
+            label = label,
+            cmd   = string.format("ATC.%s({unitName=%s,airbaseName=%s})",
+                        fn, _jStr(playerName), _jStr(abName)),
+        }
+    end
+
+    if postLanding and not inAir and spdKt and spdKt <= 50 then
+        addCmd("Vacate Runway and Contact Ground", "onVacatingRunway")
+        addCmd("Declare Emergency",                "onEmergency")
+    elseif ph == "landing" then
+        addCmd("Vacating Runway",        "onVacatingRunway")
+        addCmd("Acknowledge / Wilco",    "onWilco")
+        addCmd("Declare Emergency",      "onEmergency")
+    elseif arrived then
+        local towerReady    = rec.towerHandoffReady and rec.towerHandoffReady[abName]
+        local towerCheckedIn = rec.towerCheckedIn  and rec.towerCheckedIn[abName]
+        if towerReady and not towerCheckedIn then addCmd("Contact Tower",    "onHandoffToTower") end
+        if towerReady and towerCheckedIn     then addCmd("Request Landing",  "onRequestLanding") end
+        addCmd("Report Position",    "onPositionReport")
+        addCmd("Acknowledge / Wilco","onWilco")
+        addCmd("Request Go-Around",  "onGoAround")
+        addCmd("Declare Emergency",  "onEmergency")
+        addCmd("Cancel Request",     "onCancelRequest")
+    elseif not inAir then
+        addCmd("Request Taxi Clearance",    "onTaxiRequest")
+        addCmd("Request Takeoff Clearance", "onTakeoffRequest")
+        addCmd("Ready for Departure",       "onReadyDeparture")
+        addCmd("Declare Emergency",         "onEmergency")
+    else
+        addCmd("Request Landing / Inbound", "onInboundRequest")
+        addCmd("Report Position",    "onPositionReport")
+        addCmd("Acknowledge / Wilco","onWilco")
+        addCmd("Request Go-Around",  "onGoAround")
+        addCmd("Declare Emergency",  "onEmergency")
+        addCmd("Cancel Request",     "onCancelRequest")
+    end
+    return items
+end
+
+local function _encodeMenu(title, items)
+    local parts = {}
+    for _, item in ipairs(items) do parts[#parts + 1] = _jItem(item) end
+    return string.format('{"title":%s,"items":[%s]}', _jStr(title), table.concat(parts, ","))
+end
+
+-- Top-level menu (nearby airfields or engaged-field actions).
+function ATC.getOverlayMenuJson(playerName)
+    local rec = ATC.state.aircraft[playerName]
+    if not rec then return '{"title":"DCS ATC","items":[]}' end
+
+    if rec.engagedField then
+        local ab = Airbase.getByName(rec.engagedField)
+        if ab then
+            local items = _overlayEngagedItems(rec, playerName, rec.engagedField)
+            return _encodeMenu("ATC -- " .. rec.engagedField, items)
+        else
+            rec.engagedField = nil
+        end
+    end
+
+    -- Not engaged: show nearby airfields
+    local unit  = Unit.getByName(playerName)
+    local uPos  = unit and unit:getPoint()
+    local items = {}
+    if uPos then
+        items[#items + 1] = {
+            kind  = "cmd",
+            label = "Refresh",
+            cmd   = string.format("ATC.onRefreshMenu(%s)", _jStr(playerName)),
+        }
+        local nearby = ATC.getNearbyAirbases(uPos, ATC.config.nearRadiusM)
+        for _, fe in ipairs(nearby) do
+            local distKm  = math.floor(fe.distM / 1000 + 0.5)
+            local rwy     = ATC.getRunway(fe.name)
+            local freqStr = (rwy and rwy.frequencies and rwy.frequencies.approach)
+                            and ("  APP " .. rwy.frequencies.approach.mhz) or ""
+            items[#items + 1] = {
+                kind  = "sub",
+                label = fe.name .. "  (" .. distKm .. " km)" .. freqStr,
+                key   = fe.name,
+            }
+        end
+    end
+    return _encodeMenu("DCS ATC", items)
+end
+
+-- Sub-menu for a specific airfield (called when user drills into a field).
+function ATC.getFieldOverlayMenuJson(playerName, fieldName)
+    local rec = ATC.state.aircraft[playerName]
+    if not rec then return '{"title":"DCS ATC","items":[]}' end
+
+    local rwy     = ATC.getRunway(fieldName)
+    local freqStr = (rwy and rwy.frequencies and rwy.frequencies.approach)
+                    and ("  APP " .. rwy.frequencies.approach.mhz) or ""
+    local items   = _overlayEngagedItems(rec, playerName, fieldName)
+
+    if #items == 0 then
+        items[#items + 1] = {
+            kind  = "cmd",
+            label = "Request Landing / Inbound",
+            cmd   = string.format("ATC.onInboundRequest({unitName=%s,airbaseName=%s})",
+                        _jStr(playerName), _jStr(fieldName)),
+        }
+    end
+    return _encodeMenu(fieldName .. freqStr, items)
 end

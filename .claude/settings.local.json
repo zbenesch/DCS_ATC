@@ -18,7 +18,30 @@
       "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"Get-ChildItem ''C:/Users/benes'' -Filter ''*.miz'' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName\")",
       "Bash(python3 -c \":*)",
       "Bash(lua5.1 -e \"dofile\\(''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\)\")",
-      "Bash(luajit -e \"dofile\\(''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\)\")"
+      "Bash(luajit -e \"dofile\\(''k:/DCS_ATC/Mods/Services/DCS-ATC/Scripts/controllers/phrasedur.lua''\\)\")",
+      "Bash(find 'C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-SRS' -type f -name *.lua)",
+      "Bash(cp \"k:/DCS_ATC/Scripts/Hooks/DCS-ATC-hook.lua\" \"C:/Users/benes/Saved Games/DCS/Scripts/Hooks/DCS-ATC-hook.lua\")",
+      "Bash(mkdir -p \"C:/Users/benes/Saved Games/DCS/Mods/Services/DCS-ATC/UI\")",
+      "Bash(cp \"k:/DCS_ATC/Mods/Services/DCS-ATC/UI/DCS-ATC-Overlay.dlg\" \"C:/Users/benes/Saved Games/DCS/Mods/Services/DCS-ATC/UI/DCS-ATC-Overlay.dlg\")",
+      "Bash(find 'C:/Users/benes/Saved Games/DCS' -name *SRS* -o -name *srs*)",
+      "Read(//c/Program Files/**)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Generate-Phrases.ps1\" -ApiKey \"sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5\" -FFmpeg \"E:\\\\downloader\\\\ffmpeg.exe\")",
+      "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Logs\\\\DCS-atc.log'' -Tail 150\")",
+      "Bash(powershell -Command \"Compare-Object \\(Get-Content ''k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\controllers\\\\phrasedur.lua'' | Select-Object -Last 5\\) \\(Get-Content ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\controllers\\\\phrasedur.lua'' | Select-Object -Last 5\\)\")",
+      "Bash(powershell -Command \":*)",
+      "Bash(powershell -Command \"Copy-Item ''k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script.lua'' ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script.lua'' -Force; Copy-Item ''k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script2.lua'' ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script2.lua'' -Force; Copy-Item ''k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script3.lua'' ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\ATC_Script3.lua'' -Force; Copy-Item ''k:\\\\DCS_ATC\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\controllers\\\\phrasedur.lua'' ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Mods\\\\Services\\\\DCS-ATC\\\\Scripts\\\\controllers\\\\phrasedur.lua'' -Force; Write-Host ''Done''\")",
+      "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Logs\\\\DCS-atc.log'' -Tail 100\")",
+      "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\benes\\\\Saved Games\\\\DCS\\\\Logs\\\\dcs.log'' -Tail 200 | Select-String -Pattern ''overlay|Overlay|GUI|gui|ATC|atc|error|Error|ERROR'' | Select-Object -Last 80\")",
+      "Bash(find 'H:/DCS World/Scripts' -name *.lua -type f)",
+      "Bash(grep -r keyCommandss*= 'H:/DCS World/Mods/aircraft/Uh-1H/Input/UH-1H/keyboard/')",
+      "Bash(grep -r iCommandEnginesStarts*= 'H:/DCS World/Mods/aircraft/Uh-1H/Cockpit/Scripts/')",
+      "Bash(find 'H:/DCS World/Scripts' -name *.lua -exec grep -l iCommandEnginesStarts*= {})",
+      "Bash(2)",
+      "Bash(find 'H:/DCS World' -name *.lua -exec grep -l iCommandViewCockpits*= {})",
+      "Bash(find 'H:/DCS World/Mods/tech/CombinedArms/Input' -name *.lua)",
+      "Bash(find 'H:/DCS World/Scripts/Input' -name *.lua)",
+      "Bash(\"E:/downloader/ffmpeg.exe\" -version)",
+      "Bash(\"E:/downloader/ffmpeg.exe\" -i \"k:/DCS_ATC/Mods/Services/DCS-ATC/phrases/daniel/batumi-approach.ogg\")"
     ]
   }
 }

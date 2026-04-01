@@ -1,0 +1,200 @@
+-- DCS-ATC overlay dialog
+-- Minimal container; all content widgets are created dynamically in DCS-ATC-OverlayGameGUI.lua.
+-- pSkins holds skin-source statics (invisible) so the Lua script can pull pre-styled skins
+-- without needing to construct Skin objects from scratch.
+
+dialog = {
+    ["type"] = "Window",
+    ["params"] = {
+        ["bounds"] = {
+            [1] = {
+                ["h"] = 200,
+                ["w"] = 420,
+                ["x"] = 10,
+                ["y"] = 200,
+            },
+        },
+        ["draggable"]  = true,
+        ["enabled"]    = true,
+        ["hasCursor"]  = true,
+        ["lockFlow"]   = false,
+        ["modal"]      = false,
+        ["offscreen"]  = false,
+        ["resizable"]  = false,
+        ["zOrder"]     = 200,
+        ["text"]       = "DCS ATC",
+    },
+    ["skin"] = {
+        ["params"] = {
+            ["name"] = "windowSkin",
+        },
+        ["states"] = {
+            ["released"] = {
+                [1] = {
+                    ["bkg"] = {
+                        ["center_center"] = "0x00000096",
+                    },
+                },
+            },
+        },
+    },
+    ["children"] = {
+
+        -- Main content panel (content widgets inserted here by Lua)
+        ["Box"] = {
+            ["type"] = "Panel",
+            ["params"] = {
+                ["bounds"] = {
+                    ["h"] = 400,
+                    ["w"] = 420,
+                    ["x"] = 0,
+                    ["y"] = 30,
+                },
+                ["enabled"] = true,
+                ["text"]    = "",
+                ["visible"] = true,
+            },
+            ["skin"] = {
+                ["params"] = {
+                    ["name"] = "panelSkin",
+                },
+            },
+        },
+
+        -- Invisible skin-holder panel: Lua pulls skins from these to style Static.new() widgets
+        ["pSkins"] = {
+            ["type"] = "Panel",
+            ["params"] = {
+                ["bounds"] = {
+                    ["h"] = 1,
+                    ["w"] = 1,
+                    ["x"] = 0,
+                    ["y"] = 0,
+                },
+                ["enabled"] = true,
+                ["visible"] = false,
+            },
+            ["skin"] = {
+                ["params"] = {
+                    ["name"] = "panelSkin",
+                },
+            },
+            ["children"] = {
+
+                -- Yellow bold  — used for the menu title
+                ["sTitle"] = {
+                    ["type"] = "Static",
+                    ["params"] = {
+                        ["bounds"] = { ["h"] = 20, ["w"] = 100, ["x"] = 0, ["y"] = 0 },
+                        ["enabled"] = true,
+                        ["text"]    = "title",
+                        ["visible"] = true,
+                    },
+                    ["skin"] = {
+                        ["params"] = {
+                            ["name"]         = "staticSkin",
+                            ["textWrapping"] = false,
+                        },
+                        ["states"] = {
+                            ["released"] = {
+                                [1] = {
+                                    ["text"] = {
+                                        ["color"]      = "0xfbb941ff",
+                                        ["font"]       = "DejaVuLGCSansCondensed-Bold.ttf",
+                                        ["lineHeight"] = 14,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+
+                -- White bold  — used for command items (executable actions)
+                ["sItem"] = {
+                    ["type"] = "Static",
+                    ["params"] = {
+                        ["bounds"] = { ["h"] = 20, ["w"] = 100, ["x"] = 0, ["y"] = 0 },
+                        ["enabled"] = true,
+                        ["text"]    = "item",
+                        ["visible"] = true,
+                    },
+                    ["skin"] = {
+                        ["params"] = {
+                            ["name"]         = "staticSkin",
+                            ["textWrapping"] = false,
+                        },
+                        ["states"] = {
+                            ["released"] = {
+                                [1] = {
+                                    ["text"] = {
+                                        ["color"]      = "0xffffffff",
+                                        ["font"]       = "DejaVuLGCSansCondensed-Bold.ttf",
+                                        ["lineHeight"] = 13,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+
+                -- Light-blue bold  — used for sub-menu items (drill-in to airfield)
+                ["sSub"] = {
+                    ["type"] = "Static",
+                    ["params"] = {
+                        ["bounds"] = { ["h"] = 20, ["w"] = 100, ["x"] = 0, ["y"] = 0 },
+                        ["enabled"] = true,
+                        ["text"]    = "sub",
+                        ["visible"] = true,
+                    },
+                    ["skin"] = {
+                        ["params"] = {
+                            ["name"]         = "staticSkin",
+                            ["textWrapping"] = false,
+                        },
+                        ["states"] = {
+                            ["released"] = {
+                                [1] = {
+                                    ["text"] = {
+                                        ["color"]      = "0x88ccffff",
+                                        ["font"]       = "DejaVuLGCSansCondensed-Bold.ttf",
+                                        ["lineHeight"] = 13,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+
+                -- Grey small  — used for the keyboard hint footer
+                ["sHint"] = {
+                    ["type"] = "Static",
+                    ["params"] = {
+                        ["bounds"] = { ["h"] = 20, ["w"] = 100, ["x"] = 0, ["y"] = 0 },
+                        ["enabled"] = true,
+                        ["text"]    = "hint",
+                        ["visible"] = true,
+                    },
+                    ["skin"] = {
+                        ["params"] = {
+                            ["name"]         = "staticSkin",
+                            ["textWrapping"] = false,
+                        },
+                        ["states"] = {
+                            ["released"] = {
+                                [1] = {
+                                    ["text"] = {
+                                        ["color"]      = "0x888888ff",
+                                        ["font"]       = "DejaVuLGCSansMono.ttf",
+                                        ["lineHeight"] = 11,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+
+            }, -- pSkins children
+        }, -- pSkins
+
+    }, -- window children
+}

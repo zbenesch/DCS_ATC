@@ -66,17 +66,21 @@ catch {
 # Narrow-band AM radio: 300-3400 Hz bandpass + slight treble clarity boost.
 # Silence trim (remove leading/trailing silence from TTS clips) + narrow-band AM radio effect.
 # The double silenceremove+areverse removes both leading AND trailing silence.
-$SilenceTrim  = "silenceremove=start_periods=1:start_threshold=-45dB:start_duration=0.02,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_duration=0.02,areverse"
+$SilenceTrim  = "silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.01,areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.01,areverse"
 $AtempoFilter = if ($Atempo -ne 1.0) { ",atempo=$Atempo" } else { "" }
 $RadioFilter  = "$SilenceTrim$AtempoFilter,highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
 
 # -- ElevenLabs voice definitions (folder name -> voice ID) ------------------
 # Folder names must match the values in _ROLE_VOICE in ATC_Script.lua.
 $Voices = [ordered]@{
-    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel - British male, calm broadcaster  -> Approach
-    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam   - American male, firm authority   -> Tower
-    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice  - British female, professional    -> Ground
-    "gary"   = "QLOrGSLtlFUlfQRSaOtQ"   # Gary   - Australian male, narrator       -> Departure
+    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel  - British male, calm broadcaster  -> Approach
+    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam    - American male, firm authority   -> Tower
+    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice   - British female, professional    -> Ground
+    "gary"   = "QLOrGSLtlFUlfQRSaOtQ"   # Gary    - Australian male, narrator       -> Departure
+    "david"  = "FmJ4FDkdrYIKzBTruTkV"   # David
+    "diane"  = "VdlAJiY20k9brfuVL9hQ"   # Diane
+    "olivia" = "GsjQ0ydx7QzhDLqInGtT"   # Olivia
+    "brad"   = "MYiFAKeVwcvm4z9VsFAR"   # Brad
 }
 
 # -- Phrases dictionary: token-name -> spoken text ---------------------------
@@ -351,6 +355,148 @@ $Phrases = [ordered]@{
     "evreux"     = "evreux"
     "cairo"      = "cairo"
     "normandy"   = "normandy"
+
+    # -- Number words (for spoken distances 1-20 as single clips) -----------
+    "nine"       = "nine."         # word-form (vs "niner" = ICAO digit)
+    "ten"        = "ten."
+    "eleven"     = "eleven."
+    "twelve"     = "twelve."
+    "thirteen"   = "thirteen."
+    "fourteen"   = "fourteen."
+    "fifteen"    = "fifteen."
+    "sixteen"    = "sixteen."
+    "seventeen"  = "seventeen."
+    "eighteen"   = "eighteen."
+    "nineteen"   = "nineteen."
+    "twenty"     = "twenty."
+
+    # -- Tens (for QFE/distance compound numbers 21-99) ----------------------
+    "thirty"     = "thirty."
+    "forty"      = "forty."
+    "fifty"      = "fifty."
+    "sixty"      = "sixty."
+    "seventy"    = "seventy."
+    "eighty"     = "eighty."
+    "ninety"     = "ninety."
+
+    # -- QFE / altimeter ----------------------------------------------------
+    "decimal"    = "decimal."
+    "qfe"        = "Q.F.E."
+
+    # -- Distance unit (short form for vectors) -----------------------------
+    "miles"      = "miles."
+
+    # -- Outside-airspace (single clip, >50 NM) -----------------------------
+    "outside-my-airspace" = "You are outside my airspace. Contact me again within 50 miles."
+
+    # -- Compound phrase starters -------------------------------------------
+    "radar-contact-you-are" = "Radar contact. You are"
+    "for-landing"           = "for landing."
+
+    # -- Time-of-day farewells (replace 'report final' from approach) --------
+    "have-a-good-morning"   = "Have a good morning."
+    "have-a-good-afternoon" = "Have a good afternoon."
+    "have-a-good-day"       = "Have a good day."
+    "have-a-good-evening"   = "Have a good evening."
+
+    # -- Compound airport + role phrases (Caucasus) -------------------------
+    "batumi-approach"        = "Batumi approach."
+    "of-batumi"              = "of Batumi."
+    "batumi-tower"           = "Batumi tower."
+    "kobuleti-approach"      = "Kobuleti approach."
+    "of-kobuleti"            = "of Kobuleti."
+    "kobuleti-tower"         = "Kobuleti tower."
+    "kutaisi-approach"       = "Kutaisi approach."
+    "of-kutaisi"             = "of Kutaisi."
+    "kutaisi-tower"          = "Kutaisi tower."
+    "senaki-approach"        = "Senaki approach."
+    "of-senaki"              = "of Senaki."
+    "senaki-tower"           = "Senaki tower."
+    "sukhumi-approach"       = "Sukhumi approach."
+    "of-sukhumi"             = "of Sukhumi."
+    "sukhumi-tower"          = "Sukhumi tower."
+    "gudauta-approach"       = "Gudauta approach."
+    "of-gudauta"             = "of Gudauta."
+    "gudauta-tower"          = "Gudauta tower."
+    "sochi-approach"         = "Sochi approach."
+    "of-sochi"               = "of Sochi."
+    "sochi-tower"            = "Sochi tower."
+    "tbilisi-approach"       = "Tbilisi approach."
+    "of-tbilisi"             = "of Tbilisi."
+    "tbilisi-tower"          = "Tbilisi tower."
+    "vaziani-approach"       = "Vaziani approach."
+    "of-vaziani"             = "of Vaziani."
+    "vaziani-tower"          = "Vaziani tower."
+    "krasnodar-approach"     = "Krasnodar approach."
+    "of-krasnodar"           = "of Krasnodar."
+    "krasnodar-tower"        = "Krasnodar tower."
+    "krymsk-approach"        = "Krymsk approach."
+    "of-krymsk"              = "of Krymsk."
+    "krymsk-tower"           = "Krymsk tower."
+    "novorossiysk-approach"  = "Novorossiysk approach."
+    "of-novorossiysk"        = "of Novorossiysk."
+    "novorossiysk-tower"     = "Novorossiysk tower."
+    "anapa-approach"         = "Anapa approach."
+    "of-anapa"               = "of Anapa."
+    "anapa-tower"            = "Anapa tower."
+    "maykop-approach"        = "Maykop approach."
+    "of-maykop"              = "of Maykop."
+    "maykop-tower"           = "Maykop tower."
+    "beslan-approach"        = "Beslan approach."
+    "of-beslan"              = "of Beslan."
+    "beslan-tower"           = "Beslan tower."
+    "mozdok-approach"        = "Mozdok approach."
+    "of-mozdok"              = "of Mozdok."
+    "mozdok-tower"           = "Mozdok tower."
+    "nalchik-approach"       = "Nalchik approach."
+    "of-nalchik"             = "of Nalchik."
+    "nalchik-tower"          = "Nalchik tower."
+    "gelendzhik-approach"    = "Gelendzhik approach."
+    "of-gelendzhik"          = "of Gelendzhik."
+    "gelendzhik-tower"       = "Gelendzhik tower."
+
+    # -- Compound airport + role phrases (Persian Gulf) ---------------------
+    "dubai-approach"         = "Dubai approach."
+    "of-dubai"               = "of Dubai."
+    "dubai-tower"            = "Dubai tower."
+    "fujairah-approach"      = "Fujairah approach."
+    "of-fujairah"            = "of Fujairah."
+    "fujairah-tower"         = "Fujairah tower."
+    "kish-approach"          = "Kish approach."
+    "of-kish"                = "of Kish."
+    "kish-tower"             = "Kish tower."
+    "sharjah-approach"       = "Sharjah approach."
+    "of-sharjah"             = "of Sharjah."
+    "sharjah-tower"          = "Sharjah tower."
+    "kerman-approach"        = "Kerman approach."
+    "of-kerman"              = "of Kerman."
+    "kerman-tower"           = "Kerman tower."
+    "shiraz-approach"        = "Shiraz approach."
+    "of-shiraz"              = "of Shiraz."
+    "shiraz-tower"           = "Shiraz tower."
+    "khasab-approach"        = "Khasab approach."
+    "of-khasab"              = "of Khasab."
+    "khasab-tower"           = "Khasab tower."
+
+    # -- Compound airport + role phrases (Syria / Med) ----------------------
+    "incirlik-approach"      = "Incirlik approach."
+    "of-incirlik"            = "of Incirlik."
+    "incirlik-tower"         = "Incirlik tower."
+    "akrotiri-approach"      = "Akrotiri approach."
+    "of-akrotiri"            = "of Akrotiri."
+    "akrotiri-tower"         = "Akrotiri tower."
+    "hatay-approach"         = "Hatay approach."
+    "of-hatay"               = "of Hatay."
+    "hatay-tower"            = "Hatay tower."
+    "adana-approach"         = "Adana approach."
+    "of-adana"               = "of Adana."
+    "adana-tower"            = "Adana tower."
+    "beirut-approach"        = "Beirut approach."
+    "of-beirut"              = "of Beirut."
+    "beirut-tower"           = "Beirut tower."
+    "damascus-approach"      = "Damascus approach."
+    "of-damascus"            = "of Damascus."
+    "damascus-tower"         = "Damascus tower."
 }
 
 # -- Helper: get audio duration using ffmpeg -i -----------------------------
@@ -378,7 +524,7 @@ function Invoke-ElevenLabsTTS {
         text       = $Text
         model_id   = "eleven_turbo_v2_5"
         voice_settings = @{
-            stability        = 0.75
+            stability        = 0.80
             similarity_boost = 0.85
             style            = 0.0
             use_speaker_boost = $true

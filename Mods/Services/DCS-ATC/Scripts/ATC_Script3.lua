@@ -743,7 +743,9 @@ function ATC.issueVectorInstruction(unitName, rec, unit, abPos, gate, targetHdg,
         hdgPart = "turn LEFT heading " .. ATC.fmtHdg(magHdg)
     end
     if distNM then
-        hdgPart = hdgPart .. string.format(" for %.1f NM", distNM)
+        local distRounded = math.floor(distNM + 0.4)
+        if distRounded < 1 then distRounded = 1 end
+        hdgPart = hdgPart .. string.format(" for %d miles", distRounded)
     end
     local altPart
     if not gate.noAltitude and gate.altFt then
