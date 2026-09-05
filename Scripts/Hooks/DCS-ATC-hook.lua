@@ -169,10 +169,20 @@ function _atcHook.onSimulationStart()
     local theaters = { "Caucasus", "PersianGulf", "Syria", "Nevada", "Normandy" }
     for _, theater in ipairs(theaters) do
         local dir = airfieldsDir .. theater
-        for fName in lfs.dir(dir) do
-            if fName:match("%.lua$") then
-                loadFileIntoSSE(dir .. "\\" .. fName, theater .. "/" .. fName)
+        -- lfs.dir raises on a missing directory. A theater folder that has not
+        -- been created yet must not abort the rest of onSimulationStart --
+        -- everything below (phrasedur, the export inject, _startPending) would
+        -- silently never run.
+        local ok, err = pcall(function()
+            for fName in lfs.dir(dir) do
+                if fName:match("%.lua$") then
+                    loadFileIntoSSE(dir .. "\\" .. fName, theater .. "/" .. fName)
+                end
             end
+        end)
+        if not ok then
+            log.write("DCS-ATC", log.WARNING,
+                "Skipped theater dir " .. dir .. ": " .. tostring(err))
         end
     end
 
@@ -228,6 +238,14 @@ function _atcHook.onSimulationFrame()
 
     if not _atcHook._simRunning then return end
 
+    -- Drive overlay hotkey actions every frame so rapid key presses aren't lost.
+    if atcOverlay then
+        local ok_ov, err_ov = pcall(atcOverlay.onFrame)
+        if not ok_ov then
+            log.write("DCS-ATC", log.WARNING, "overlay onFrame error: " .. tostring(err_ov))
+        end
+    end
+
     -- ── 1 Hz fallback radio poll ─────────────────────────────────────────────
     -- Primary path: the injected LuaExportBeforeNextFrame calls
     --   net.dostring_in("server", ATC.setRadioFrequencies(...)) directly.
@@ -236,15 +254,6 @@ function _atcHook.onSimulationFrame()
     local now = os.time()
     if now == _atcHook._lastRadioPoll then return end
     _atcHook._lastRadioPoll = now
-
-    -- Drive overlay window creation and deferred hotkey actions (1 Hz).
-    -- Must be before the rawResult early-return so it runs even without radio data.
-    if atcOverlay then
-        local ok_ov, err_ov = pcall(atcOverlay.onFrame)
-        if not ok_ov then
-            log.write("DCS-ATC", log.WARNING, "overlay onFrame error: " .. tostring(err_ov))
-        end
-    end
 
     local ok_r, rb1, rb2 = pcall(net.dostring_in, "export",
         "return (_dcsatc_radioResult or '')")

@@ -410,6 +410,7 @@ function ATC.clearEngagement(unitName)
     rec.engagedField = nil
     if field then
         ATC.freeStackLevel(unitName, field)
+        ATC.releaseRunway(field, unitName)
         if rec.stackAlt       then rec.stackAlt[field]       = nil end
         if rec.approachGate   then rec.approachGate[field]   = nil end
         if rec.landingCleared then rec.landingCleared[field]  = nil end
@@ -673,7 +674,7 @@ function ATC.onInboundRequest(arg)
                 "\n%s final heading %s for %d miles, %s %d ft. Contact tower.",
                 turnDir, ATC.fmtHdg(magHdg),
                 math.max(1, math.floor(legDistNm + 0.4)),
-                (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
+                (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
                 slotAlt)
             firstVectorVoice = firstVectorLine
             ATC.log(string.format("INBD  %-10s @%s  FINAL vector: trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
@@ -701,7 +702,7 @@ function ATC.onInboundRequest(arg)
                 "\n%s heading %s for %d miles, %s %d ft.",
                 turnDir, ATC.fmtHdg(magHdg),
                 math.max(1, math.floor(legDistNm + 0.4)),
-                (slotAlt > (ATC.getAltAglFt(unit) or 0)) and "climb to" or "descend to",
+                (slotAlt > (ATC.getAltFt(unit) or 0)) and "climb to" or "descend to",
                 slotAlt)
             firstVectorVoice = firstVectorLine
             ATC.log(string.format("INBD  %-10s @%s  CRP=%d(%s) trueHdg=%.0f magHdg=%d alt=%d  vector:[%s]",
@@ -753,7 +754,6 @@ function ATC.onInboundRequest(arg)
     -- Show pilot's call as text only — no voice, fixed 3 s display
     trigger.action.outTextForGroup(rec.groupId, initialCallText, 3, false)
     local t1 = timer.getTime() + 4.5
-    local respDur  = ATC.ttsDuration(responseVoice)
     timer.scheduleFunction(function(p)
         local r  = ATC.state.aircraft[p.unitName]
         local u2 = Unit.getByName(p.unitName)
@@ -769,30 +769,10 @@ function ATC.onInboundRequest(arg)
         responseVoice=responseVoice,
         abPos=abPos,
     }, t1)
-    timer.scheduleFunction(function(p)
-        local ok, err = pcall(function()
-            local r = ATC.state.aircraft[p.unitName]
-            if not r or not Unit.getByName(p.unitName) then return end
-            if ATC.getRunway(p.airbaseName) then
-                ATC.initPatternEntry(p.unitName, p.airbaseName)
-            end
-        end)
-        if not ok then ATC.log("initPatternEntry ERROR: " .. tostring(err)) end
-        return nil
-    end, { unitName=unitName, airbaseName=airbaseName }, t1 + respDur + 0.5)
-    timer.scheduleFunction(function(p)
-        local ok, err = pcall(function()
-            local fs2  = ATC.state.airfields[p.airbaseName]
-            if not fs2 or not fs2.rwyClear then return end
-            local top  = fs2.landingSeq and fs2.landingSeq[1]
-            local topR = top and ATC.state.aircraft[top]
-            if topR and not (topR.landingCleared and topR.landingCleared[p.airbaseName]) then
-                ATC.checkAndClearNext(p.airbaseName)
-            end
-        end)
-        if not ok then ATC.log("clearNext ERROR: " .. tostring(err)) end
-        return nil
-    end, { airbaseName=airbaseName }, t1 + respDur + 6)
+    -- Nothing else is scheduled here. The CRP1 vector is built into the reply
+    -- above so it arrives as one transmission, and the sequence number was
+    -- already assigned by addToLandingSeq -- there is nothing for
+    -- checkAndClearNext to renumber at this point.
 end
 
 function ATC.onHandoffToTower(arg)
@@ -834,6 +814,7 @@ function ATC.onHandoffToTower(arg)
     ATC.radioMsg(rec.groupId, abPos, string.format(
         "%s, %s Tower, radar contact on %s. Report final.",
         cs, fieldName, freqStr), false, airbaseName, "Tower")
+    ATC.buildFullMenu(unitName)
 end
 
 function ATC.onRequestLanding(arg)
@@ -875,14 +856,20 @@ function ATC.onRequestLanding(arg)
     local ab = Airbase.getByName(airbaseName)
     local abPos = ab and ATC.getAirbasePos(ab)
     local rwy = ATC.getRunway(airbaseName)
-    local rwyHdg = rwy and rwy.hdg or 0
-    local rwyNum = math.floor((rwyHdg + 5) / 10)
-    if rwyNum <= 0 then rwyNum = 36 elseif rwyNum > 36 then rwyNum = 36 end
+    local rwyHdg = ATC.getActiveRwyHdg(airbaseName) or (rwy and rwy.hdg) or 0
+    local rwyNum = ATC.rwyDesignator(rwyHdg)
     local windDir, windSpd = ATC.getWind(abPos)
+    if not ATC.isRunwayClear(airbaseName, unitName) then
+        ATC.radioMsg(rec.groupId, abPos, string.format(
+            "%s, %s Tower, runway occupied. Hold present position, standby for landing clearance.",
+            cs, fieldName), false, airbaseName, "Tower")
+        return
+    end
     rec.landingCleared = rec.landingCleared or {}
     rec.landingCleared[airbaseName] = true
+    ATC.reserveRunway(airbaseName, unitName)
     ATC.radioMsg(rec.groupId, abPos, string.format(
-        "%s, %s Tower, cleared to land runway %02d, wind %03d for %d, slow to approach speed, check gear down.",
+        "%s, %s Tower, cleared to land runway %s, wind %03d at %d, slow to approach speed, check gear down.",
         cs, fieldName, rwyNum, windDir, windSpd), false, airbaseName, "Tower")
     ATC.buildFullMenu(unitName)
 end
@@ -901,39 +888,56 @@ function ATC.onTowerContact(arg)
 end
 
 function ATC.onTaxiRequest(arg)
-    local unitName    = arg.unitName
+    local unitName = arg.unitName
     local unit = Unit.getByName(unitName)
     if not unit or not ATC.isPlayer(unit) then return end
     local rec     = ATC.state.aircraft[unitName]
-    local cs      = unit:getCallsign() or ""
     local groupId = rec and rec.groupId or (unit:getGroup() and unit:getGroup():getID())
     if not groupId then return end
-    local airfield  = (rec and rec.engagedField) or arg.airbaseName or "Kobuleti"
-    local rwy       = ATC.runways and ATC.runways[airfield]
-    local rwyHdg    = rwy and rwy.hdg        or 70
-    local rwyRec    = rwy and rwy.reciprocal or 250
+    local airfield = (rec and rec.engagedField) or arg.airbaseName or "Kobuleti"
+    local rwy      = ATC.runways and ATC.runways[airfield]
     local ab       = Airbase.getByName(airfield)
     local abPos    = ab and ATC.getAirbasePos(ab)
-    local windDir, windSpd = ATC.getWind(abPos)
-    local heavy = arg.heavy or (rec and rec.heavy)
-    local bestRwy
-    if heavy then
-        bestRwy = string.format("%02d", math.floor((rwyRec + 5) / 10))
-    else
-        local function headwind(hdg)
-            local diff = math.abs(hdg - windDir)
-            if diff > 180 then diff = 360 - diff end
-            return windSpd * math.cos(math.rad(diff))
-        end
-        if headwind(rwyHdg) >= headwind(rwyRec) then
-            bestRwy = string.format("%02d", math.floor((rwyHdg + 5) / 10))
-        else
-            bestRwy = string.format("%02d", math.floor((rwyRec + 5) / 10))
+
+    -- Determine active runway
+    local activeHdg = ATC.getActiveRwyHdg(airfield)
+    activeHdg = activeHdg or (rwy and rwy.hdg) or 0
+    local rwyNum = ATC.rwyDesignator(activeHdg)
+
+    -- Taxi routing (only for airfields that have zone data)
+    local routeStr = ""
+    if rwy and rwy.taxiGraph and rwy.zoneLabel and rwy.holdshortZone then
+        local targetZone = rwy.holdshortZone[activeHdg]
+        if targetZone then
+            local unitPos  = unit:getPoint()
+            local fromZone = ATC.findGroundZone(unitPos, rwy)
+            ATC.debugLog(string.format("TAXI  unit=%s fromZone=%s targetZone=%s", unitName, tostring(fromZone), targetZone))
+            if fromZone and fromZone ~= targetZone then
+                local path = ATC.planTaxiRoute(fromZone, targetZone, rwy.taxiGraph)
+                if path then
+                    local labels = ATC.taxiRouteLabels(path, rwy.zoneLabel)
+                    if #labels > 0 then
+                        -- Capitalise first letter for display; lowercase for voice tokenisation
+                        local parts = {}
+                        for i, lbl in ipairs(labels) do
+                            parts[i] = lbl:sub(1,1):upper() .. lbl:sub(2)
+                        end
+                        routeStr = " via " .. table.concat(parts, ", ") .. ","
+                    end
+                end
+            end
         end
     end
-    ATC.msg(groupId, string.format(
-        "%s\nCleared to taxi, runway %s in use.\nHold short of runway %s.",
-        preamble(unitName, airfield, "Ground"), bestRwy, bestRwy))
+
+    local windDir, windSpd = ATC.getWind(abPos)
+    local windStr = (windSpd > 2)
+        and string.format("wind %03d at %d.", windDir, windSpd)
+        or  "wind calm."
+    local text = string.format(
+        "%s cleared to taxi runway %s,%s hold short runway %s, %s",
+        controllerCall(unitName, airfield, "Ground"),
+        rwyNum, routeStr, rwyNum, windStr)
+    ATC.radioMsg(groupId, abPos, text, false, airfield, "Ground")
 end
 function ATC.onTakeoffRequest(arg)
     local unitName    = arg.unitName
@@ -943,7 +947,7 @@ function ATC.onTakeoffRequest(arg)
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
     local fs = ATC.getFieldState(airbaseName)
-    if not fs.rwyClear then
+    if not ATC.isRunwayClear(airbaseName, unitName) then
         ATC.msg(rec.groupId, string.format(
             "%s\n"                                 ..
             "Hold position.  Runway not clear.\n"  ..
@@ -963,7 +967,7 @@ function ATC.onTakeoffRequest(arg)
             "Runway clear, cleared for takeoff.\n"           ..
             "Wind calm.  Fly runway heading after departure.",
             preamble(unitName, airbaseName, "Tower")))
-        fs.rwyClear = false
+        ATC.reserveRunway(airbaseName, unitName)
         ATC.setPhase(unitName, airbaseName, "takeoff")
         ATC.setEngagedField(unitName, airbaseName)
     else
@@ -1068,7 +1072,7 @@ function ATC.onGoAround(arg)
     if rec.holdPhase       then rec.holdPhase[airbaseName]       = nil end
     if rec.postLandingReady then rec.postLandingReady[airbaseName] = nil end
     ATC.freeStackLevel(unitName, airbaseName)
-    fs.rwyClear = true
+    ATC.releaseRunway(airbaseName, unitName)
     ATC.checkAndClearNext(airbaseName)
 end
 function ATC.onVacatingRunway(arg)
@@ -1078,17 +1082,48 @@ function ATC.onVacatingRunway(arg)
     if not rec then return end
     local unit = Unit.getByName(unitName)
     if not ATC.isPlayer(unit) then return end
-    local cs = unit:getCallsign() or ""
-    local fs = ATC.getFieldState(airbaseName)
-    ATC.msg(rec.groupId, string.format(
-        "%s\n"                                 ..
-        "Roger, vacating runway.\n"            ..
-        "Taxi to parking.  Welcome to %s.",
-        preamble(unitName, airbaseName, "Ground"), airbaseName))
+    local fs  = ATC.getFieldState(airbaseName)
+    local rwy = ATC.runways and ATC.runways[airbaseName]
+    local ab  = Airbase.getByName(airbaseName)
+    local abPos = ab and ATC.getAirbasePos(ab)
+
+    -- Find closest free parking spot
+    local spot = ATC.getClosestParking(unit, ab)
+    local spotNum = spot and spot.Term_Index
+
+    -- Build taxi-back route if zone data available
+    local routeStr = ""
+    if rwy and rwy.taxiGraph and rwy.zoneLabel and rwy.parkingZone then
+        local unitPos  = unit:getPoint()
+        local fromZone = ATC.findGroundZone(unitPos, rwy)
+        if fromZone and fromZone ~= rwy.parkingZone then
+            local path = ATC.planTaxiRoute(fromZone, rwy.parkingZone, rwy.taxiGraph)
+            if path then
+                local labels = ATC.taxiRouteLabels(path, rwy.zoneLabel)
+                if #labels > 0 then
+                    local parts = {}
+                    for i, lbl in ipairs(labels) do
+                        parts[i] = lbl:sub(1,1):upper() .. lbl:sub(2)
+                    end
+                    routeStr = " via " .. table.concat(parts, ", ") .. ","
+                end
+            end
+        end
+    end
+
+    -- Build spot text
+    local spotStr = spotNum and string.format(" spot %d,", spotNum) or ""
+
+    local text = string.format(
+        "%s taxi to parking%s%s welcome to %s.",
+        controllerCall(unitName, airbaseName, "Ground"),
+        spotStr, routeStr, airbaseName)
+    ATC.radioMsg(rec.groupId, abPos, text, false, airbaseName, "Ground")
+
     for i, n in ipairs(fs.landingSeq) do
         if n == unitName then table.remove(fs.landingSeq, i) break end
     end
-    fs.rwyClear = true
+    ATC.releaseRunway(airbaseName, unitName)
     if rec.gearReminded then rec.gearReminded[airbaseName] = nil end
     if rec.handedOffToTower then rec.handedOffToTower[airbaseName] = nil end
     if rec.approachGate then rec.approachGate[airbaseName] = nil end
@@ -1102,6 +1137,41 @@ function ATC.onVacatingRunway(arg)
     ATC.clearEngagement(unitName)
     ATC.checkAndClearNext(airbaseName)
 end
+
+-- Airborne off the departure runway (S_EVENT_TAKEOFF).
+-- Without this the field stays flagged occupied for the rest of the mission:
+-- onTakeoffRequest reserves the runway and only the arrival paths ever released
+-- it, so a single departure blocked every subsequent landing clearance.
+function ATC.onDepartedRunway(unitName, airbaseName)
+    local rec = ATC.state.aircraft[unitName]
+    if not rec then return end
+    local fs = ATC.getFieldState(airbaseName)
+    for i, n in ipairs(fs.departSeq) do
+        if n == unitName then table.remove(fs.departSeq, i) break end
+    end
+    ATC.releaseRunway(airbaseName, unitName)
+    if ATC.getPhase(unitName, airbaseName) == "takeoff" then
+        ATC.setPhase(unitName, airbaseName, "airborne")
+    end
+    ATC.log(string.format("EVNT  TAKEOFF %s @%s -> runway released", unitName, airbaseName))
+    ATC.checkAndClearNext(airbaseName)
+end
+
+-- Touchdown (S_EVENT_LAND). The aircraft physically holds the runway from here
+-- until it vacates, so take the reservation in its name even if the clearance
+-- came from a path that did not reserve one.
+function ATC.onTouchdown(unitName, airbaseName)
+    local rec = ATC.state.aircraft[unitName]
+    if not rec then return end
+    -- Only take the runway for an aircraft actually working this field. A pilot
+    -- who lands without ever calling ATC must not leave behind a reservation
+    -- that no later path will release.
+    if rec.engagedField ~= airbaseName then return end
+    ATC.reserveRunway(airbaseName, unitName)
+    ATC.setPhase(unitName, airbaseName, "landing")
+    ATC.log(string.format("EVNT  LAND %s @%s -> runway held", unitName, airbaseName))
+end
+
 function ATC.onEmergency(arg)
     local unitName    = arg.unitName
     local airbaseName = arg.airbaseName
@@ -1135,86 +1205,40 @@ function ATC.onEmergency(arg)
     ATC.setPhase(unitName, airbaseName, "approach")
     ATC.setEngagedField(unitName, airbaseName)
 end
+-- Re-sequences the arrival queue after an aircraft leaves it (landed, vacated,
+-- went around, departed) and tells anyone whose number changed.
+--
+-- This function does NOT issue landing clearance. In the CRP pattern that is
+-- advancePatternCorner's job at CP5 (approach -> tower handoff) and
+-- onRequestLanding / checkGlideslopes' job on final. It used to try to do both
+-- and was unreachable as a result: it returned early whenever patternAlt was
+-- set, and required patternCornerIdx to still point at CP5 -- but the CP5
+-- handler clears both fields at the same moment, so neither branch could pass.
+--
+-- Stack separation is likewise not adjusted here. getProtectedPatternAlt already
+-- keeps 1000 ft between aircraft and relaxes on its own as slots below free up;
+-- issuing a descent here would be overwritten by the next CRP advance.
 function ATC.checkAndClearNext(airbaseName)
     local fs = ATC.state.airfields[airbaseName]
-    if not fs or not fs.rwyClear then return end
-    if #fs.landingSeq == 0 then return end
-    local nextName = fs.landingSeq[1]
-    local nextUnit = Unit.getByName(nextName)
-    local ab       = Airbase.getByName(airbaseName)
+    if not fs or #fs.landingSeq == 0 then return end
+    local ab    = Airbase.getByName(airbaseName)
     local abPos = ab and ATC.getAirbasePos(ab)
-    local telem = ATC.state.telemetry and ATC.state.telemetry[nextName]
-    local tNow = timer.getTime()
-    local telemFresh = telem and telem.t and ((tNow - telem.t) <= 2.5)
-    local telemPos = telemFresh and telem.posX and telem.posZ and {
-        x = telem.posX,
-        y = telem.posY or 0,
-        z = telem.posZ,
-    } or nil
-    local distNM = nil
-    if telemPos and abPos then
-        distNM = ATC.mToNM(ATC.distVec3H(telemPos, abPos))
-    elseif nextUnit and ab then
-        distNM = ATC.distUnitToBase(nextUnit, ab)
-    end
-    local handoffNM = ATC.config.ilsHandoffNM or 8
-    if distNM and distNM > handoffNM then return end
-    local nextRec  = ATC.state.aircraft[nextName]
-    if not nextRec then return end
-    
-    -- Frequency check: Player must be on Approach frequency to receive clearance
-    if not ATC.isOnFrequency(nextName, airbaseName, "approach") then
-        return  -- Not on correct frequency, skip clearance
-    end
-    
-    if nextRec.patternAlt and nextRec.patternAlt[airbaseName] then
-        return
-    end
-    local nextCs = (nextUnit and nextUnit:getCallsign()) or ""
-    local rwyC      = ATC.getRunway(airbaseName)
-    if abPos and rwyC then
-        local legPos = telemPos or (nextUnit and nextUnit:getPoint()) or nil
-        local corners = rwyC and ATC.getPatternCorners(rwyC, airbaseName)
-        local patternIdx = nextRec.patternCornerIdx and nextRec.patternCornerIdx[airbaseName]
-        local isAtCRP5 = false
-        if corners and patternIdx and corners[patternIdx] and corners[patternIdx].seq == 5 then
-            isAtCRP5 = true
-        end
-        if not isAtCRP5 then
-            return
-        end
-    end
-    local towerFreq  = rwyC and rwyC.frequencies and rwyC.frequencies.tower
-    local freqStr    = towerFreq and (towerFreq.mhz .. " MHz") or "Tower frequency"
-    local holdSpeedKt = (ATC.config and ATC.config.holdSpeedKt) or 300
-    ATC.radioMsg(nextRec.groupId, abPos, string.format(
-        "%s"                                                       ..
-        "Cleared for the approach.  "                             ..
-        "Contact %s Tower on %s.  %s",
-        preamble(nextName, airbaseName, "Approach"), airbaseName, freqStr, ATC.getDaytimeFarewell()), false, airbaseName, "Approach")
-    if not nextRec.landingCleared then nextRec.landingCleared = {} end
-    nextRec.landingCleared[airbaseName] = true
-    ATC.setPhase(nextName, airbaseName, "approach")
-    local rwyC  = ATC.getRunway(airbaseName)
-    local elev  = (rwyC and rwyC.elevation) or 0
-    for i = 2, #fs.landingSeq do
-        local wName = fs.landingSeq[i]
+
+    for i, wName in ipairs(fs.landingSeq) do
         local wRec  = ATC.state.aircraft[wName]
         local wUnit = Unit.getByName(wName)
-        if wRec and wUnit and wRec.stackAlt then
-            local oldAlt = wRec.stackAlt[airbaseName]
-            if oldAlt then
-                local newAlt = math.max(elev + ATC.config.holdAglBase, oldAlt - ATC.config.holdAglSep)
-                if newAlt ~= oldAlt then
-                    wRec.stackAlt[airbaseName] = newAlt
-                    if fs.holdStack then fs.holdStack[wName] = newAlt end
-                    if abPos then
-                        ATC.radioMsg(wRec.groupId, abPos, string.format(
-                            "%sDescend to %d ft.  Maintain %d kt.",
-                            controllerCall(wName, airbaseName, "Approach"),
-                            newAlt, holdSpeedKt), true, airbaseName, "Approach")
-                    end
-                end
+        if wRec and wUnit then
+            wRec.seqNum = wRec.seqNum or {}
+            local prevSeq = wRec.seqNum[airbaseName]
+            wRec.seqNum[airbaseName] = i
+            -- Only speak up when the number actually moved, and only to traffic
+            -- still being worked -- no point renumbering someone on rollout.
+            if abPos and prevSeq and prevSeq ~= i and wUnit:inAir()
+               and ATC.isOnFrequency(wName, airbaseName, "approach") then
+                ATC.radioMsg(wRec.groupId, abPos, string.format(
+                    "%syou are number %s for landing.",
+                    controllerCall(wName, airbaseName, "Approach"),
+                    ATC.sequenceNumber(i)), false, airbaseName, "Approach")
             end
         end
     end
@@ -1293,13 +1317,18 @@ local function _overlayEngagedItems(rec, playerName, abName)
         addCmd("Acknowledge / Wilco",    "onWilco")
         addCmd("Declare Emergency",      "onEmergency")
     elseif arrived then
-        local towerReady    = rec.towerHandoffReady and rec.towerHandoffReady[abName]
-        local towerCheckedIn = rec.towerCheckedIn  and rec.towerCheckedIn[abName]
-        if towerReady and not towerCheckedIn then addCmd("Contact Tower",    "onHandoffToTower") end
-        if towerReady and towerCheckedIn     then addCmd("Request Landing",  "onRequestLanding") end
+        local towerReady     = rec.towerHandoffReady and rec.towerHandoffReady[abName]
+        local towerCheckedIn = rec.towerCheckedIn    and rec.towerCheckedIn[abName]
+        local landingCleared = rec.landingCleared    and rec.landingCleared[abName]
+        if towerReady and not towerCheckedIn then addCmd("Contact Tower",   "onHandoffToTower") end
+        if towerReady and towerCheckedIn and not landingCleared then addCmd("Request Landing", "onRequestLanding") end
         addCmd("Report Position",    "onPositionReport")
         addCmd("Acknowledge / Wilco","onWilco")
-        addCmd("Request Go-Around",  "onGoAround")
+        if landingCleared then
+            addCmd("Missed Approach",    "onGoAround")
+        else
+            addCmd("Request Go-Around",  "onGoAround")
+        end
         addCmd("Declare Emergency",  "onEmergency")
         addCmd("Cancel Request",     "onCancelRequest")
     elseif not inAir then
