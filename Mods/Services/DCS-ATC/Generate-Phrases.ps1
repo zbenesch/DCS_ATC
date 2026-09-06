@@ -1,25 +1,34 @@
 <#
 .SYNOPSIS
-    Generates OGG phrase files for the DCS ATC phrase-stitching audio system
-    using the ElevenLabs text-to-speech API.
+    Generates OGG phrase files for the DCS ATC phrase-stitching audio system.
+    Supports ElevenLabs (online) or Piper (offline, local) as the TTS backend.
 
 .DESCRIPTION
-    Calls the ElevenLabs API for each phrase × voice combination, retrieves MP3
-    audio, applies a narrow-band radio effect via FFmpeg (300-3400 Hz bandpass),
-    converts to OGG Vorbis (mono 44100 Hz), and patches the Lua duration manifest
-    back into ATC_Script.lua between PHRASE_DUR_START / PHRASE_DUR_END markers.
-
-    Voice assignment (one voice per controller role):
-      daniel  -> Approach   (British male, calm broadcaster)
-      adam    -> Tower      (American male, firm authority)
-      alice   -> Ground     (British female, professional)
-      gary    -> Departure  (Australian male, narrator)
-
-    ALL phrases are generated for ALL four voices so any controller can utter
-    any token (digits, callsigns, airfield names, etc.).
+    For each phrase x voice combination: synthesises audio, applies a narrow-band
+    radio effect via FFmpeg (300-3400 Hz bandpass), converts to OGG Vorbis
+    (mono 44100 Hz), and patches the Lua duration manifest back into ATC_Script.lua
+    between PHRASE_DUR_START / PHRASE_DUR_END markers.
 
 .PARAMETER ApiKey
-    ElevenLabs API key.  Required.
+    ElevenLabs API key.  Required when not using -Piper.
+
+.PARAMETER Piper
+    Path to piper.exe.  When supplied, Piper is used instead of ElevenLabs.
+    -ApiKey is not required in this mode.
+
+.PARAMETER PiperVoices
+    Hashtable mapping voice key -> path to .onnx model file.
+    Example: @{ ground="k:\piper\voices\en_US-lessac-high.onnx" }
+    Defaults to a set of bundled voices when not specified.
+
+.PARAMETER NoiseScale
+    Piper noise_scale parameter (expressiveness). Default 1.0.
+
+.PARAMETER NoiseW
+    Piper noise_w parameter (timing variation). Default 1.0.
+
+.PARAMETER LengthScale
+    Piper length_scale parameter (speed; lower = faster). Default 0.85.
 
 .PARAMETER OutDir
     Root folder to write voice sub-folders into.
@@ -36,18 +45,36 @@
     Skip the radio bandpass filter - output clean TTS audio.
 
 .EXAMPLE
+    # ElevenLabs (online)
     .\Generate-Phrases.ps1 -ApiKey "sk_..." -FFmpeg "E:\downloader\ffmpeg.exe"
+
+.EXAMPLE
+    # Piper (offline)
+    .\Generate-Phrases.ps1 -Piper "k:\piper\piper.exe" -FFmpeg "E:\downloader\ffmpeg.exe"
 #>
 param(
-    [Parameter(Mandatory)][string]$ApiKey,
-    [string]$OutDir     = "$PSScriptRoot\phrases",
-    [string]$ScriptPath = "$PSScriptRoot\Scripts\ATC_Script.lua",
-    [string]$FFmpeg     = "ffmpeg",
+    [string]$ApiKey      = "",
+    [string]$Piper       = "",       # Path to piper.exe; activates Piper backend
+    [hashtable]$PiperVoices = @{},   # voice key -> .onnx path (optional override)
+    [double]$NoiseScale  = 1.0,      # Piper: expressiveness
+    [double]$NoiseW      = 1.0,      # Piper: timing variation
+    [double]$LengthScale = 0.85,     # Piper: speed (lower = faster)
+    [string]$OutDir      = "$PSScriptRoot\phrases",
+    [string]$ScriptPath  = "$PSScriptRoot\Scripts\ATC_Script.lua",
+    [string]$FFmpeg      = "ffmpeg",
     [switch]$NoRadioEffect,
-    [switch]$Force,               # Re-generate even if OGG already exists
-    [double]$TtsSpeed   = 1.15,   # ElevenLabs speaking rate (0.7-1.2; 1.0 = normal)
-    [double]$Atempo     = 1.0     # FFmpeg post-process speed (1.0 = off, 1.1 = 10% faster)
+    [switch]$Force,                  # Re-generate even if OGG already exists
+    [double]$TtsSpeed    = 1.15,     # ElevenLabs speaking rate
+    [double]$Atempo      = 1.0,      # FFmpeg post-process speed (1.0 = off)
+    [string[]]$VoiceFilter = @()     # If non-empty, only generate for these voice keys
 )
+
+# -- Validate backend --------------------------------------------------------
+$UsePiper = ($Piper -ne "")
+if (-not $UsePiper -and $ApiKey -eq "") {
+    Write-Error "Provide either -ApiKey (ElevenLabs) or -Piper <path to piper.exe>."
+    exit 1
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -66,21 +93,73 @@ catch {
 # Narrow-band AM radio: 300-3400 Hz bandpass + slight treble clarity boost.
 # Silence trim (remove leading/trailing silence from TTS clips) + narrow-band AM radio effect.
 # The double silenceremove+areverse removes both leading AND trailing silence.
-$SilenceTrim  = "silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.01,areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.01,areverse"
+# -55dB threshold is conservative enough to not eat trailing consonants (e.g. "approach" -> "appro").
+# apad=pad_dur=0.05 adds 50 ms of padding after trim so final consonants are never clipped.
+$SilenceTrim  = "silenceremove=start_periods=1:start_threshold=-55dB:start_duration=0.005"
 $AtempoFilter = if ($Atempo -ne 1.0) { ",atempo=$Atempo" } else { "" }
-$RadioFilter  = "$SilenceTrim$AtempoFilter,highpass=f=300,lowpass=f=3400,treble=g=5,volume=1.4"
+# Radio filter chain:
+#   acompressor  - heavy AGC/squelch compression (the biggest "radio" cue missing before)
+#                  threshold=-25dB, ratio=4:1, 5ms attack / 80ms release, 5dB makeup gain
+#   Double highpass/lowpass at 12dB/oct -> 24dB/oct roll-off for sharper band edges
+#   equalizer    - +4dB presence boost at 1.2 kHz (speech intelligibility sweet spot on radio)
+#   volume       - final normalisation
+$RadioFilter  = "$SilenceTrim$AtempoFilter," +
+    "acompressor=threshold=-25dB:ratio=4:attack=5:release=80:knee=2:makeup=5," +
+    "highpass=f=300:poles=2,highpass=f=300:poles=2," +
+    "lowpass=f=3000:poles=2,lowpass=f=3000:poles=2," +
+    "equalizer=f=1200:t=o:w=2:g=4," +
+    "volume=1.5"
+
+# -- Piper voice definitions (folder name -> .onnx path) ---------------------
+# Default Piper voice map — override with -PiperVoices @{ key="path.onnx" }
+$DefaultPiperVoices = [ordered]@{
+    "lessac"  = "k:\piper\voices\en_US-lessac-high.onnx"   # American male, high quality
+    "cori"    = "k:\piper\voices\en_GB-cori-high.onnx"     # British female, high quality
+    "john"    = "k:\piper\voices\en_US-john-medium.onnx"   # American male, medium quality
+    "amy"     = "k:\piper\voices\en_US-amy-low.onnx"       # American female, low quality
+}
+if ($UsePiper) {
+    if ($PiperVoices.Count -gt 0) {
+        $Voices = [ordered]@{}
+        foreach ($kv in $PiperVoices.GetEnumerator()) { $Voices[$kv.Key] = $kv.Value }
+    } else {
+        $Voices = $DefaultPiperVoices
+    }
+}
+
+# -- Piper TTS helper --------------------------------------------------------
+function Invoke-PiperTTS {
+    param([string]$Text, [string]$OnnxPath, [string]$OutWav)
+    $tmpIn = "$env:TEMP\piper_input.txt"
+    $Text | Out-File -FilePath $tmpIn -Encoding ascii -NoNewline
+    $proc = Start-Process -FilePath $Piper `
+        -ArgumentList '--model', $OnnxPath,
+                      '--noise_scale',  $NoiseScale,
+                      '--noise_w',      $NoiseW,
+                      '--length_scale', $LengthScale,
+                      '--output_file',  $OutWav `
+        -RedirectStandardInput  $tmpIn `
+        -RedirectStandardError  "$env:TEMP\piper_err.txt" `
+        -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        $err = Get-Content "$env:TEMP\piper_err.txt" -Raw -ErrorAction SilentlyContinue
+        throw "Piper failed (exit $($proc.ExitCode)): $err"
+    }
+}
 
 # -- ElevenLabs voice definitions (folder name -> voice ID) ------------------
 # Folder names must match the values in _ROLE_VOICE in ATC_Script.lua.
-$Voices = [ordered]@{
-    "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel  - British male, calm broadcaster  -> Approach
-    "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam    - American male, firm authority   -> Tower
-    "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice   - British female, professional    -> Ground
-    "gary"   = "QLOrGSLtlFUlfQRSaOtQ"   # Gary    - Australian male, narrator       -> Departure
-    "david"  = "FmJ4FDkdrYIKzBTruTkV"   # David
-    "diane"  = "VdlAJiY20k9brfuVL9hQ"   # Diane
-    "olivia" = "GsjQ0ydx7QzhDLqInGtT"   # Olivia
-    "brad"   = "MYiFAKeVwcvm4z9VsFAR"   # Brad
+if (-not $UsePiper) {
+    $Voices = [ordered]@{
+        "daniel" = "onwK4e9ZLuTAKqWW03F9"   # Daniel  - British male, calm broadcaster  -> Approach
+        "adam"   = "pNInz6obpgDQGcFmaJgB"   # Adam    - American male, firm authority   -> Tower
+        "alice"  = "Xb7hH8MSUJpSbSDYk0k2"   # Alice   - British female, professional    -> Ground
+        "gary"   = "QLOrGSLtlFUlfQRSaOtQ"   # Gary    - Australian male, narrator       -> Departure
+        "david"  = "FmJ4FDkdrYIKzBTruTkV"   # David
+        "diane"  = "VdlAJiY20k9brfuVL9hQ"   # Diane
+        "olivia" = "GsjQ0ydx7QzhDLqInGtT"   # Olivia
+        "brad"   = "MYiFAKeVwcvm4z9VsFAR"   # Brad
+    }
 }
 
 # -- Phrases dictionary: token-name -> spoken text ---------------------------
@@ -204,6 +283,12 @@ $Phrases = [ordered]@{
     "climb-to-5000"              = "climb to five thousand feet"
     "cleared-for-takeoff"        = "cleared for takeoff"
     "wind-calm"                  = "wind calm"
+    "cleared-to-taxi"            = "cleared to taxi"
+    "hold-short"                 = "hold short"
+    "via"                        = "via"
+    "taxi-to-parking"            = "taxi to parking"
+    "welcome-to"                 = "welcome to"
+    "spot"                       = "spot"
 
     # -- Emergency / go-around --------------------------------------------
     "go-around-go-around"             = "go around, go around"
@@ -522,13 +607,19 @@ function Invoke-ElevenLabsTTS {
 
     $body = @{
         text       = $Text
-        model_id   = "eleven_turbo_v2_5"
+        # eleven_multilingual_v2  = highest quality; slower + ~2x cost vs turbo
+        # eleven_turbo_v2_5       = fast, good quality, lower cost (original)
+        model_id   = "eleven_multilingual_v2"
         voice_settings = @{
-            stability        = 0.80
-            similarity_boost = 0.85
-            style            = 0.0
+            # stability:        0.55 = slight natural variation per clip (was 0.92 = monotone)
+            # similarity_boost: 0.85 = strong speaker identity without over-enunciation
+            # style:            0.20 = mild prosodic expressiveness (was 0.0 = flat)
+            # use_speaker_boost: $true = adds presence/character to the voice
+            stability         = 0.55
+            similarity_boost  = 0.85
+            style             = 0.20
             use_speaker_boost = $true
-            speed            = $TtsSpeed
+            speed             = $TtsSpeed
         }
     } | ConvertTo-Json -Depth 5
 
@@ -570,6 +661,19 @@ Write-Host "`nGenerating $totalFiles clips ($($Voices.Count) voices x $($Phrases
 foreach ($voiceEntry in $Voices.GetEnumerator()) {
     $voiceKey = $voiceEntry.Key
     $voiceId  = $voiceEntry.Value
+    if ($VoiceFilter.Count -gt 0 -and $voiceKey -notin $VoiceFilter) {
+        # Load existing durations for skipped voices so the manifest stays complete
+        $vDir = Join-Path $OutDir $voiceKey
+        if (Test-Path $vDir) {
+            foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg" | Where-Object { $_.Name -notmatch '\.bak\.ogg$' })) {
+                $key = "$voiceKey/$($ogg.BaseName)"
+                if (-not $durations.ContainsKey($key)) {
+                    $durations[$key] = [Math]::Round((Get-AudioDuration $ogg.FullName), 3)
+                }
+            }
+        }
+        continue
+    }
     $voiceDir = Join-Path $OutDir $voiceKey
     New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
 
@@ -578,7 +682,6 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
     foreach ($phrase in $Phrases.GetEnumerator()) {
         $token   = $phrase.Key
         $text    = $phrase.Value
-        $mp3Path = Join-Path $voiceDir "$token.mp3"
         $oggPath = Join-Path $voiceDir "$token.ogg"
 
         # Skip if OGG already exists and is non-empty (resume support); -Force overrides
@@ -589,37 +692,61 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
             continue
         }
 
-        # Call ElevenLabs API
-        try {
-            Invoke-ElevenLabsTTS -Text $text -VoiceId $voiceId -OutPath $mp3Path
-        } catch {
-            Write-Warning "  ElevenLabs failed for '$voiceKey/$token': $_"
-            $done++
-            continue
-        }
-
-        # Get duration from the MP3
-        $dur = Get-AudioDuration $mp3Path
-
-        # Build FFmpeg argument list
-        if ($NoRadioEffect) {
-            $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+        if ($UsePiper) {
+            # --- Piper backend: synthesise WAV then FFmpeg WAV -> OGG ----------
+            $wavPath = Join-Path $voiceDir "$token.wav"
+            try {
+                Invoke-PiperTTS -Text $text -OnnxPath $voiceId -OutWav $wavPath
+            } catch {
+                Write-Warning "  Piper failed for '$voiceKey/$token': $_"
+                $done++
+                continue
+            }
+            $dur = Get-AudioDuration $wavPath
+            if ($NoRadioEffect) {
+                $afArgs = @('-ar','44100','-ac','1','-c:a','libvorbis','-q:a','4')
+            } else {
+                $afArgs = @('-af',$RadioFilter,'-ar','44100','-ac','1','-c:a','libvorbis','-q:a','4')
+            }
+            $proc = Start-Process -FilePath $FFmpeg `
+                -ArgumentList (@('-y','-i',$wavPath) + $afArgs + @($oggPath)) `
+                -Wait -PassThru -NoNewWindow `
+                -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
+                -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
+            if ($proc.ExitCode -ne 0) {
+                $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
+                Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
+            }
+            Remove-Item $wavPath -Force -ErrorAction SilentlyContinue
         } else {
-            $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+            # --- ElevenLabs backend: API -> MP3 -> FFmpeg MP3 -> OGG ----------
+            $mp3Path = Join-Path $voiceDir "$token.mp3"
+            try {
+                Invoke-ElevenLabsTTS -Text $text -VoiceId $voiceId -OutPath $mp3Path
+            } catch {
+                Write-Warning "  ElevenLabs failed for '$voiceKey/$token': $_"
+                $done++
+                continue
+            }
+            $dur = Get-AudioDuration $mp3Path
+            if ($NoRadioEffect) {
+                $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+            } else {
+                $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
+            }
+            $proc = Start-Process -FilePath $FFmpeg `
+                -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
+                -Wait -PassThru -NoNewWindow `
+                -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
+                -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
+            if ($proc.ExitCode -ne 0) {
+                $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
+                Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
+            }
+            Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
+            # Small pause to be polite to the API
+            Start-Sleep -Milliseconds 150
         }
-
-        $proc = Start-Process -FilePath $FFmpeg `
-            -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
-            -Wait -PassThru -NoNewWindow `
-            -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
-            -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
-
-        if ($proc.ExitCode -ne 0) {
-            $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
-            Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
-        }
-
-        Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
 
         $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
         $done++
@@ -627,9 +754,6 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
         Write-Progress -Activity "Generating phrases" `
             -Status "$voiceKey/$token  ($done / $totalFiles)" `
             -PercentComplete ([int](100 * $done / $totalFiles))
-
-        # Small pause to be polite to the API
-        Start-Sleep -Milliseconds 150
     }
 }
 
@@ -639,7 +763,7 @@ Write-Progress -Activity "Generating phrases" -Completed
 foreach ($vk in $Voices.Keys) {
     $vDir = Join-Path $OutDir $vk
     if (-not (Test-Path $vDir)) { continue }
-    foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg")) {
+    foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg" | Where-Object { $_.Name -notmatch '\.bak\.ogg$' })) {
         $key = "$vk/$($ogg.BaseName)"
         if (-not $durations.ContainsKey($key)) {
             $durations[$key] = [Math]::Round((Get-AudioDuration $ogg.FullName), 3)

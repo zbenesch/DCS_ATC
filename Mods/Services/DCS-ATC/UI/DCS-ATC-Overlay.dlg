@@ -20,20 +20,18 @@ dialog = {
         ["lockFlow"]   = false,
         ["modal"]      = false,
         ["offscreen"]  = false,
-        ["resizable"]  = false,
+        ["resizable"]  = true,
         ["zOrder"]     = 200,
-        ["text"]       = "DCS ATC",
+        ["text"]       = "",
     },
     ["skin"] = {
-        ["params"] = {
-            ["name"] = "windowSkin",
-        },
+        ["params"] = { ["name"] = "windowSkin" },
         ["states"] = {
             ["released"] = {
                 [1] = {
-                    ["bkg"] = {
-                        ["center_center"] = "0x00000096",
-                    },
+                    ["bkg"] = { ["center_center"] = "0x00000096" },
+                    
+                    ["caption"] = { ["h"] = 0 },
                 },
             },
         },
@@ -48,15 +46,18 @@ dialog = {
                     ["h"] = 400,
                     ["w"] = 420,
                     ["x"] = 0,
-                    ["y"] = 30,
+                    ["y"] = 0,
                 },
                 ["enabled"] = true,
                 ["text"]    = "",
                 ["visible"] = true,
             },
             ["skin"] = {
-                ["params"] = {
-                    ["name"] = "panelSkin",
+                ["params"] = { ["name"] = "panelSkin" },
+                ["states"] = {
+                    ["released"] = {
+                        [1] = { ["bkg"] = { ["center_center"] = "0x00000000" } },
+                    },
                 },
             },
         },

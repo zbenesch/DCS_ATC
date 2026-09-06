@@ -350,36 +350,49 @@ local function _renderMenu()
     local boxH = yOff + HINT_H + PAD
     _box:setBounds(0, 0, WIDTH, boxH)
     _window:setSize(WIDTH, boxH)
-    _window:setHasCursor(true)
+    -- Must follow the pin state, not force the cursor on. _pinNow sets
+    -- setHasCursor(false) for click-through and then calls _renderMenu to
+    -- refresh the hint -- so an unconditional true here immediately undid the
+    -- pin, leaving pinned and floating indistinguishable.
+    _window:setHasCursor(not _isPinned)
 end
 
 -- ── Open / close ──────────────────────────────────────────────────────────────
-local function _openNow()
+-- Fetches the top-level menu and renders it.
+-- Deliberately does NOT touch _isOpen / _isPinned, so it is safe as a refresh
+-- after running a command -- see _selectNow.
+local function _refreshMenu(why)
     _playerName = _getPlayerName()
     if not _playerName then
-        _log("open: player name unavailable (spectator/lobby)")
-        return
+        _log(why .. ": player name unavailable (spectator/lobby)")
+        return false
     end
 
     local jsonStr = _doSSE(string.format(
         "return type(ATC)=='table' and type(ATC.getOverlayMenuJson)=='function' and ATC.getOverlayMenuJson('%s') or ''",
         _esc(_playerName)))
 
-    _curMenu  = _decodeJson(jsonStr)
-    _prevMenu = nil
-
-    if not _curMenu or not _curMenu.items or #_curMenu.items == 0 then
-        _log("open: no menu data returned for '" .. tostring(_playerName) .. "'")
-        return
+    local menu = _decodeJson(jsonStr)
+    if not menu or not menu.items or #menu.items == 0 then
+        _log(why .. ": no menu data returned for '" .. tostring(_playerName) .. "'")
+        return false
     end
 
+    _curMenu  = menu
+    _prevMenu = nil
+    _renderMenu()
+    return true
+end
+
+local function _openNow()
+    if not _refreshMenu("open") then return end
+    if not (_curMenu and _curMenu.items) then return end
     _isOpen   = true
     _isPinned = false
     _log("opened ok, player=" .. tostring(_playerName) .. " items=" .. #_curMenu.items)
     _window:setVisible(true)   -- re-show if X button hid it
     _box:setVisible(true)
-    _window:setHasCursor(true)
-    _renderMenu()
+    _renderMenu()              -- re-render now that open/pinned state is set
 end
 
 local function _pinNow()
@@ -416,9 +429,9 @@ local function _selectNow(n)
         end
     elseif item.kind == "cmd" then
         if item.cmd and item.cmd ~= "" then _doSSE(item.cmd) end
-        -- Refresh to top-level menu so user can see updated state; stay open.
-        _prevMenu = nil
-        _openNow()
+        -- Refresh in place. This used to call _openNow, which resets _isPinned,
+        -- so selecting any command silently un-pinned the overlay.
+        _refreshMenu("refresh")
     end
 end
 
@@ -481,7 +494,14 @@ local function _createWindow()
     -- ── Register all hotkeys from config ──────────────────────────────────────
     local c = atcOverlay.config
 
-    _addHK(c.key_toggle, function() _pendingToggle = _pendingToggle + 1 end, "toggle")
+    -- Logged at the point of the keypress, not where it is drained: that
+    -- distinguishes "the key never reached us" from "it arrived and the state
+    -- machine did the wrong thing with it".
+    _addHK(c.key_toggle, function()
+        _pendingToggle = _pendingToggle + 1
+        _log(string.format("hotkey toggle pressed (queued=%d, open=%s, pinned=%s)",
+            _pendingToggle, tostring(_isOpen), tostring(_isPinned)))
+    end, "toggle")
 
     -- The configured select keys default to NUMPAD ("[1]".."[9]"), but the menu
     -- renders items as "[1] Contact Tower", so pressing the number row is the
