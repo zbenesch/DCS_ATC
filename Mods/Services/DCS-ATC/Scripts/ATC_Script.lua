@@ -25,11 +25,18 @@ end
 -- the aircraft unit name (sd.UnitName), and the aircraft type (sd.Name) as fallback.
 -- Lookup order: unit name -> pilot name -> type name (type is last resort; unreliable
 -- when multiple aircraft of the same type are airborne).
+-- Last non-empty radio list seen per unit. The export hook pushes an empty list
+-- whenever its device scan comes back blank (radio powered down, cockpit not
+-- ready yet), and an empty list must not read as "this aircraft has no radios"
+-- -- that silently disables the frequency check.
+ATC._radioLastGood = ATC._radioLastGood or {}
+
 function ATC.getRadioFrequencies(unitName)
     if ATC._radioFreqs then
         -- 1. Direct match by DCS unit/mission name
         local direct = ATC._radioFreqs[unitName]
         if direct and type(direct) == "table" and next(direct) ~= nil then
+            ATC._radioLastGood[unitName] = direct
             return direct
         end
         local unit = Unit.getByName(unitName)
@@ -39,6 +46,7 @@ function ATC.getRadioFrequencies(unitName)
             if ok_pn and type(playerName) == "string" and playerName ~= "" then
                 local byPlayer = ATC._radioFreqs[playerName]
                 if byPlayer and type(byPlayer) == "table" and next(byPlayer) ~= nil then
+                    ATC._radioLastGood[unitName] = byPlayer
                     return byPlayer
                 end
             end
@@ -47,6 +55,7 @@ function ATC.getRadioFrequencies(unitName)
             if ok_tn and type(typeName) == "string" then
                 local byType = ATC._radioFreqs[typeName]
                 if byType and type(byType) == "table" and next(byType) ~= nil then
+                    ATC._radioLastGood[unitName] = byType
                     return byType
                 end
             end
@@ -3029,9 +3038,21 @@ ATC.config = {
     gsGoAroundDev   = 3.0,  -- mandatory go-around      (~600 ft / ~48 kt off)
     gsMonitorNM     = 5,    -- deviation is in absolute feet, so only judge the
                             -- glidepath close in, where that is meaningful
+    -- "Established on final" test (isEstablishedOnFinal). A fixed-width corridor
+    -- rather than an angular sector: a +/-30 degree sector is +/-3.7 NM wide at
+    -- 7.4 NM and catches ordinary circuit traffic.
+    finalEstablishNM = 8,    -- max range at which final can be declared
+    finalCorridorNM  = 1.5,  -- max lateral offset from the extended centreline
+    finalHdgTolDeg   = 25,   -- max track error from the final approach course
+    finalMaxClimbMs  = 3,    -- above this climb rate it is a go-around, not an approach
+    cp5MinCaptureNM  = 1.5,  -- floor for the CP5 capture radius; the value in the
+                             -- airfield files is a chart annotation and is far too
+                             -- tight to fly to with a periodically-refreshed vector
     guidanceInterval = 30,
     finalNM         = 20,
     stallWarnKt     = 80,
+    stallWarnMinAglFt = 100, -- below this the aircraft is landing, not stalling:
+                             -- inAir() alone flickers during rollout and bounces
     approachSpeeds = {
         ["F-16C_50"]            = { clean=250, gear=190, final=160, maxFinal=200 },
         ["FA-18C_hornet"]       = { clean=250, gear=200, final=140, maxFinal=180 },
@@ -3091,6 +3112,22 @@ ATC.config = {
 function ATC.debugLog(msg)
     if not (ATC and ATC.config and ATC.config.debug) then return end
     ATC.log("DEBUG " .. tostring(msg))
+end
+
+-- Logs only when the message for a key changes.
+--
+-- Most of what matters here is state that is re-evaluated every second or two:
+-- logging it unconditionally buried the handful of lines that explain a flight
+-- under thousands of identical ones. Use this for anything evaluated in a loop;
+-- use ATC.log directly for one-shot events.
+local _lastLogged = {}
+function ATC.logChange(key, msg)
+    if _lastLogged[key] == msg then return end
+    _lastLogged[key] = msg
+    ATC.log(msg)
+end
+function ATC.logChangeReset(key)
+    _lastLogged[key] = nil
 end
 
 function ATC.voiceDebug(groupId, msg)
@@ -3334,30 +3371,33 @@ function ATC.getRunway(abName)
         ATC.debugLog(string.format("getRunway: abName=nil or rdata=nil (abName=%s)", tostring(abName)))
         return nil
     end
+    -- Hits are not logged: this is called several times a second per aircraft and
+    -- accounted for a third of the entire log file. Only the interesting
+    -- outcomes are recorded, and only when they change.
     local exact = rdata[abName]
-    if exact then
-        ATC.debugLog(string.format("getRunway: exact match for '%s'", tostring(abName)))
-        return exact
-    end
+    if exact then return exact end
 
     local norm = normalizeAirbaseName(abName)
-    ATC.debugLog(string.format("getRunway: normalized '%s' -> '%s'", tostring(abName), tostring(norm)))
     if not norm then return nil end
 
     local aliasKey = _AIRBASE_ALIASES[norm]
     if aliasKey and rdata[aliasKey] then
-        ATC.debugLog(string.format("getRunway: aliasKey match '%s' -> '%s'", norm, aliasKey))
+        ATC.logChange("rwyalias|" .. abName, string.format(
+            "RWY   '%s' resolved via alias -> '%s'", tostring(abName), aliasKey))
         return rdata[aliasKey]
     end
 
     for key, value in pairs(rdata) do
         if normalizeAirbaseName(key) == norm then
-            ATC.debugLog(string.format("getRunway: normalized key match '%s' <-> '%s'", key, abName))
+            ATC.logChange("rwynorm|" .. abName, string.format(
+                "RWY   '%s' resolved by normalised name -> '%s'", tostring(abName), key))
             return value
         end
     end
 
-    ATC.debugLog(string.format("getRunway: no match for '%s' (norm='%s')", tostring(abName), tostring(norm)))
+    ATC.logChange("rwymiss|" .. tostring(abName), string.format(
+        "RWY   NO CONFIG for '%s' (norm='%s') -- no ATC at this field",
+        tostring(abName), tostring(norm)))
     return nil
 end
 function ATC.distVec3(a, b)
@@ -3647,17 +3687,35 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
         return false
     end
 
-    -- Get current radio frequencies from telemetry
-    local telem = ATC.state.telemetry and ATC.state.telemetry[unitName]
+    -- Current radio frequencies, most authoritative source first.
+    --
+    -- Telemetry alone is not enough: it is only populated once runVectoring
+    -- starts, so for the opening seconds of a mission every unit looked like it
+    -- had no radios and the check below waved everything through. A call at
+    -- t=4.9 s was accepted while tuned 0.1 MHz off.
+    local telem  = ATC.state.telemetry and ATC.state.telemetry[unitName]
     local radios = telem and telem.radios
+    if not (radios and next(radios) ~= nil) then
+        radios = ATC.getRadioFrequencies(unitName)          -- live, pre-telemetry
+    end
+    if not (radios and next(radios) ~= nil) then
+        radios = ATC._radioLastGood and ATC._radioLastGood[unitName]  -- transient blank scan
+    end
+
     local hasRadioData = radios and next(radios) ~= nil
     if not hasRadioData then
-        -- No radio data from export hook (aircraft type may not expose frequencies,
-        -- or LoGetSelfData().UnitName mismatch). Allow the request rather than
-        -- blocking indefinitely.
-        ATC.voiceDebug(groupId, string.format(
-            "%s freq-check BYPASS (no radio data) controller=%s required=%.3f",
-            tostring(unitName), tostring(controller), requiredFreqMhz))
+        -- Nothing has ever been read for this unit, so the module probably does
+        -- not expose frequencies at all. Allow, rather than locking the player
+        -- out of ATC entirely -- but say so in the log, because a silent bypass
+        -- is indistinguishable from a working frequency check.
+        ATC._freqBypassLogged = ATC._freqBypassLogged or {}
+        local key = tostring(unitName) .. "|" .. tostring(controller)
+        if not ATC._freqBypassLogged[key] then
+            ATC._freqBypassLogged[key] = true
+            ATC.log(string.format(
+                "FREQ  BYPASS %s %s: no radio data ever seen (required %.3f) -- check allowed",
+                tostring(unitName), tostring(controller), requiredFreqMhz))
+        end
         return true
     end
 
@@ -3670,6 +3728,12 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
             ATC.voiceDebug(groupId, string.format(
                 "%s %s OK required=%.3f tuned=%.3f radios=[%s]",
                 tostring(unitName), tostring(controller), requiredFreqMhz, currentFreqMhz, fmtRadioList(radios)))
+            -- Change-only: confirms the check actually ran and passed, without
+            -- a line per call. "No FREQ line at all" now means the check never
+            -- executed, which is itself the useful signal.
+            ATC.logChange(string.format("freqok|%s|%s", tostring(unitName), tostring(controller)),
+                string.format("FREQ  OK %s %s: tuned %.3f", tostring(unitName),
+                    tostring(controller), currentFreqMhz))
             matched = true
             break
         end
@@ -3686,6 +3750,12 @@ function ATC.isOnFrequency(unitName, airbaseName, controller, opts)
         ATC.voiceDebug(groupId, string.format(
             "%s %s FAIL required=%.6f radios=[%s]",
             tostring(unitName), tostring(controller), requiredFreqMhz, table.concat(radioList, ", ")))
+        -- Also to the ATC log: whether a frequency check passed is exactly the
+        -- kind of thing worth being able to read back after a flight, and
+        -- voiceDebug is off by default.
+        ATC.log(string.format("FREQ  REJECT %s %s: required %.3f, tuned [%s]",
+            tostring(unitName), tostring(controller), requiredFreqMhz,
+            table.concat(radioList, ", ")))
     end
     return matched
 end

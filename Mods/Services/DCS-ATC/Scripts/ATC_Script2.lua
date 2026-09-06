@@ -260,9 +260,6 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     else
-        local safeUnitName = tostring(unitName or 'nil')
-        local safeAirbaseName = tostring((arg and arg.airbaseName) or 'nil')
-        ATC.log(string.format("MENU: Adding 'Request Landing / Inbound' for unit=%s airbase=%s", safeUnitName, safeAirbaseName))
         missionCommands.addCommandForGroup(gid, "Request Landing / Inbound",
             fieldMenu, function(a) ATC.onInboundRequest(a) end, arg)
         missionCommands.addCommandForGroup(gid, "Report Position",
@@ -274,21 +271,20 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     end
-        local safeUnitName2 = tostring(unitName or 'nil')
-        local safeAbName = tostring(abName or 'nil')
-        local safeInAir = tostring(inAir or 'nil')
-        local safeDistM = tonumber(fieldEntry.distM) or -1
-        ATC.log(string.format("BUILD_FIELD_MENU: unit=%s ab=%s inAir=%s distM=%.1f", safeUnitName2, safeAbName, safeInAir, safeDistM))
 end
 function ATC.buildFullMenu(unitName)
-    ATC.log("BUILD_FULL_MENU: called for unit=" .. tostring(unitName))
-    if ATC and ATC.state and ATC.state.aircraft and ATC.state.aircraft[unitName] then
-        local rec = ATC.state.aircraft[unitName]
-        ATC.log("BUILD_FULL_MENU: engagedField=" .. tostring(rec.engagedField))
-    end
+    -- Rebuilt on every phase change and once a second from refreshArrivalMenus,
+    -- so only a change in what the menu actually shows is worth a line.
     local rec = ATC.state.aircraft[unitName]
+    ATC.logChange("menu|" .. tostring(unitName), string.format(
+        "MENU  %s engaged=%s phase=%s",
+        tostring(unitName),
+        tostring(rec and rec.engagedField or "none"),
+        tostring(rec and rec.engagedField
+                 and ATC.getPhase(unitName, rec.engagedField) or "-")))
     if not rec then
-        ATC.log("MENU  buildFullMenu: no rec for " .. tostring(unitName))
+        ATC.logChange("norec|" .. tostring(unitName),
+            "MENU  no record for " .. tostring(unitName))
         return
     end
     if rec.menuRoot then
@@ -298,7 +294,8 @@ function ATC.buildFullMenu(unitName)
     end
     local unit = Unit.getByName(unitName)
     if not unit or not unit:isExist() then
-        ATC.log("MENU  buildFullMenu: unit not found: " .. tostring(unitName))
+        ATC.logChange("nounit|" .. tostring(unitName),
+            "MENU  unit not found: " .. tostring(unitName))
         return
     end
     local uPos = unit:getPoint()
@@ -346,7 +343,6 @@ function ATC.buildFullMenu(unitName)
             else
                 -- Ground / departure: keep the per-field sub-menu
                 local fe = { ab = ab, distM = distM, name = abName }
-                ATC.log("BUILD_FULL_MENU: building menu for engagedField=" .. tostring(abName))
                 ATC.buildFieldMenu(unitName, fe)
                 missionCommands.addCommandForGroup(rec.groupId,
                     "Cancel Request with " .. abName,
@@ -361,11 +357,10 @@ function ATC.buildFullMenu(unitName)
     local nearby = ATC.getNearbyAirbases(uPos, ATC.config.nearRadiusM)
     local rangeText = formatRangeText(unitName, ATC.config.nearRadiusM)
     local nameList = {}
-    ATC.log("BUILD_FULL_MENU: nearby airfields count=" .. tostring(#nearby))
-    for i, fe in ipairs(nearby) do
-        ATC.log(string.format("BUILD_FULL_MENU: nearby[%d]=%s distM=%.1f", i, tostring(fe.name), tonumber(fe.distM or -1)))
-    end
     for _, fe in ipairs(nearby) do nameList[#nameList + 1] = fe.name end
+    ATC.logChange("nearby|" .. tostring(unitName), string.format(
+        "MENU  %s nearby fields: %s", tostring(unitName),
+        (#nameList > 0) and table.concat(nameList, ", ") or "none"))
     rec.nearbyFields = nameList
     missionCommands.addCommandForGroup(rec.groupId,
         ATC.config.menuRefreshLabel,
@@ -377,7 +372,6 @@ function ATC.buildFullMenu(unitName)
         return
     end
     for _, fe in ipairs(nearby) do
-        ATC.log("BUILD_FULL_MENU: building field menu for " .. tostring(fe.name))
         ATC.buildFieldMenu(unitName, fe)
     end
 end
@@ -385,7 +379,13 @@ function ATC.setPhase(unitName, airbaseName, newPhase)
     local rec = ATC.state.aircraft[unitName]
     if not rec then return end
     if not rec.phases then rec.phases = {} end
+    local oldPhase = rec.phases[airbaseName]
     rec.phases[airbaseName] = newPhase
+    if oldPhase ~= newPhase then
+        ATC.log(string.format("PHASE %-10s @%s  %s -> %s",
+            tostring(unitName), tostring(airbaseName),
+            tostring(oldPhase or "none"), tostring(newPhase)))
+    end
     ATC.buildFullMenu(unitName)
 end
 
@@ -869,6 +869,8 @@ function ATC.onRequestLanding(arg)
     rec.landingCleared = rec.landingCleared or {}
     rec.landingCleared[airbaseName] = true
     ATC.reserveRunway(airbaseName, unitName)
+    ATC.log(string.format("CLEAR %-10s @%s  CLEARED TO LAND rwy %s (wind %03d/%d)",
+        tostring(unitName), tostring(airbaseName), tostring(rwyNum), windDir, windSpd))
     ATC.radioMsg(rec.groupId, abPos, string.format(
         "%s, %s Tower, cleared to land runway %s, wind %03d at %d, slow to approach speed, check gear down.",
         cs, fieldName, rwyNum, windDir, windSpd), false, airbaseName, "Tower")

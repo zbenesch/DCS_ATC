@@ -83,6 +83,9 @@ end
 -- be told the runway is clear for itself and so only the holder can release it.
 function ATC.reserveRunway(abName, unitName)
 	local fs = ATC.getFieldState(abName)
+	if fs.rwyOccupiedBy ~= unitName then
+		ATC.log(string.format("RWY   %s reserved by %s", tostring(abName), tostring(unitName)))
+	end
 	fs.rwyClear      = false
 	fs.rwyOccupiedBy = unitName
 end
@@ -93,7 +96,13 @@ end
 function ATC.releaseRunway(abName, unitName)
 	local fs = ATC.getFieldState(abName)
 	if unitName and fs.rwyOccupiedBy and fs.rwyOccupiedBy ~= unitName then
+		ATC.log(string.format("RWY   %s release by %s DENIED (held by %s)",
+			tostring(abName), tostring(unitName), tostring(fs.rwyOccupiedBy)))
 		return false
+	end
+	if fs.rwyOccupiedBy then
+		ATC.log(string.format("RWY   %s released by %s",
+			tostring(abName), tostring(fs.rwyOccupiedBy)))
 	end
 	fs.rwyClear      = true
 	fs.rwyOccupiedBy = nil
