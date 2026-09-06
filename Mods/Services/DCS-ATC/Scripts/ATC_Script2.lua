@@ -231,13 +231,14 @@ function ATC.buildFieldMenu(unitName, fieldEntry)
         missionCommands.addCommandForGroup(gid, "Declare Emergency",
             fieldMenu, function(a) ATC.onEmergency(a) end, arg)
     elseif arrivalEngaged then
-        local towerReady = rec.towerHandoffReady and rec.towerHandoffReady[abName]
+        -- Offered on engagement, not gated on towerHandoffReady. Gating on it
+        -- meant an arrival that never captured a CRP saw neither item and had
+        -- no way to request landing. Matches buildFullMenu.
         local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[abName]
-        if towerReady and not towerCheckedIn then
+        if not towerCheckedIn then
             missionCommands.addCommandForGroup(gid, "Contact Tower",
                 fieldMenu, function(a) ATC.onHandoffToTower(a) end, arg)
-        end
-        if towerReady and towerCheckedIn then
+        else
             missionCommands.addCommandForGroup(gid, "Request Landing",
                 fieldMenu, function(a) ATC.onRequestLanding(a) end, arg)
         end
@@ -1317,11 +1318,16 @@ local function _overlayEngagedItems(rec, playerName, abName)
         addCmd("Acknowledge / Wilco",    "onWilco")
         addCmd("Declare Emergency",      "onEmergency")
     elseif arrived then
-        local towerReady     = rec.towerHandoffReady and rec.towerHandoffReady[abName]
-        local towerCheckedIn = rec.towerCheckedIn    and rec.towerCheckedIn[abName]
-        local landingCleared = rec.landingCleared    and rec.landingCleared[abName]
-        if towerReady and not towerCheckedIn then addCmd("Contact Tower",   "onHandoffToTower") end
-        if towerReady and towerCheckedIn and not landingCleared then addCmd("Request Landing", "onRequestLanding") end
+        local towerCheckedIn = rec.towerCheckedIn and rec.towerCheckedIn[abName]
+        local landingCleared = rec.landingCleared and rec.landingCleared[abName]
+        -- Same as buildFieldMenu / buildFullMenu: not gated on towerHandoffReady.
+        -- The overlay was the strictest of the three, so a straight-in arrival
+        -- saw no tower item here at all.
+        if not towerCheckedIn then
+            addCmd("Contact Tower", "onHandoffToTower")
+        elseif not landingCleared then
+            addCmd("Request Landing", "onRequestLanding")
+        end
         addCmd("Report Position",    "onPositionReport")
         addCmd("Acknowledge / Wilco","onWilco")
         if landingCleared then

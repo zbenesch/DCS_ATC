@@ -293,8 +293,22 @@ function ATC.checkGlideslopes()
                             local onFinal = finalLeg and distNM <= 8
                             local onPatternEntry = patternEntryLeg and distNM <= 10 -- 10 NM default for pattern entry
                             local controller = (onFinal or onPatternEntry) and "Tower" or "Approach"
-                            if (onPatternEntry or onFinal) and not rec.handedOffToTower[abName]
-                               and not (rec.patternAlt and rec.patternAlt[abName]) then
+                            -- An aircraft established on final has left the CRP circuit, whether
+                            -- or not it ever captured a corner. patternAlt is otherwise cleared
+                            -- only at CP5, and it latches off this handoff, the pattern
+                            -- advisories and towerHandoffReady -- so a pilot flying a straight-in
+                            -- had no route to a landing clearance at all.
+                            if onFinal and rec.patternAlt and rec.patternAlt[abName] then
+                                ATC.releasePatternHold(unitName, rec, abName)
+                                ATC.log(string.format(
+                                    "PATREL %-10s @%s  established on final at %.1f NM -> released from CRP circuit",
+                                    unitName, abName, distNM))
+                            end
+                            -- Still flying the circuit? Let the CRP sequence own the handoff;
+                            -- otherwise a downwind leg near a CRP would hand off prematurely.
+                            local inCrpPattern = rec.patternAlt and rec.patternAlt[abName]
+                            if (onFinal or (onPatternEntry and not inCrpPattern))
+                               and not rec.handedOffToTower[abName] then
                                 local towerFreq = rwy and rwy.frequencies and rwy.frequencies.tower
                                 local freqStr = towerFreq and (towerFreq.mhz .. " MHz") or "Tower frequency"
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -303,6 +317,17 @@ function ATC.checkGlideslopes()
                                     controllerCall(unitName, abName, "Approach"), fieldName, freqStr, distNM),
                                     false, abName, "Approach")
                                 rec.handedOffToTower[abName] = true
+                                -- Open the tower dialogue so the pilot can actually request
+                                -- landing. Only advancePatternCorner did this before, at CP5.
+                                rec.towerHandoffReady = rec.towerHandoffReady or {}
+                                rec.towerCheckedIn    = rec.towerCheckedIn    or {}
+                                rec.towerHandoffReady[abName] = true
+                                if rec.towerCheckedIn[abName] == nil then
+                                    rec.towerCheckedIn[abName] = false
+                                end
+                                ATC.log(string.format("HANDOFF %-10s @%s  tower dialogue open at %.1f NM",
+                                    unitName, abName, distNM))
+                                ATC.buildFullMenu(unitName)
                             end
                         local cleared = rec.landingCleared and rec.landingCleared[abName]
                         if spdKt and spdKt < ATC.config.stallWarnKt and unit:inAir() then
@@ -684,6 +709,20 @@ function ATC.freePatternSlot(unitName, abName)
     local fs = ATC.state.airfields[abName]
     if fs and fs.patternSlots then fs.patternSlots[unitName] = nil end
 end
+-- Releases an aircraft from the CRP circuit: clears the pattern-altitude latch,
+-- the corner index and the stack slot.
+--
+-- rec.patternAlt gates the tower handoff, the pattern advisories and
+-- towerHandoffReady, so it must have more than one way out. This is the single
+-- exit: used at CP5, and when an aircraft turns up established on final without
+-- having flown the circuit at all.
+function ATC.releasePatternHold(unitName, rec, abName)
+    rec = rec or ATC.state.aircraft[unitName]
+    if not rec then return end
+    if rec.patternAlt       then rec.patternAlt[abName]       = nil end
+    if rec.patternCornerIdx then rec.patternCornerIdx[abName] = nil end
+    ATC.freePatternSlot(unitName, abName)
+end
 function ATC.freeStackLevel(unitName, abName)
     ATC.freePatternSlot(unitName, abName)
     local fs = ATC.state.airfields[abName]
@@ -946,8 +985,7 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
         rec.towerCheckedIn[abName] = false
         rec.handedOffToTower[abName] = true
         ATC.buildFullMenu(unitName)
-        rec.patternAlt[abName] = nil
-        rec.patternCornerIdx[abName] = nil
+        ATC.releasePatternHold(unitName, rec, abName)
         ATC.setPhase(unitName, abName, "approach")
         if not rec.holdPhase then rec.holdPhase = {} end
         rec.holdPhase[abName] = "pattern"
@@ -973,8 +1011,7 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
             local elev       = rwy.elevation or 0
             local finalGate  = { altFt = elev + 500, noSpeed = true }
             ATC.issueVectorInstruction(unitName, rec, unit, abPos, finalGate, inboundHdg, now, abName, abPos, nil)
-            rec.patternAlt[abName] = nil
-            rec.patternCornerIdx[abName] = nil
+            ATC.releasePatternHold(unitName, rec, abName)
             ATC.setPhase(unitName, abName, "approach")
             if not rec.holdPhase then rec.holdPhase = {} end
             rec.holdPhase[abName] = "pattern"
