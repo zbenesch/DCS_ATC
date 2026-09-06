@@ -2,14 +2,49 @@
 -- Individual airport data is loaded from airfields/<theater>/*.lua by the hook.
 ATC = ATC or {}
 
+-- Wind at a field, in the form ATC actually reports it.
+-- Returns (directionWindComesFrom_magnetic, speedKt) -- both already rounded, so
+-- callers can drop them straight into "wind %03d at %d".
+--
+-- Three conversions happen here, all of which used to be missing:
+--   * atmosphere.getWind returns a velocity vector, i.e. the direction the air
+--     is travelling TOWARD. ATC reports where it comes FROM, so +180.
+--   * DCS wind is m/s; ATC reports knots.
+--   * DCS is true north; runway headings in ATC.runways are magnetic, and
+--     getActiveRwyHdg compares the two directly.
+-- Sampled 10 m above the field, the standard anemometer height, rather than
+-- exactly at ground level.
 function ATC.getWind(abPos)
-	if env and env.mission and env.mission.weather and env.mission.weather.wind then
-		local wind = env.mission.weather.wind.atGround or { speed = 0, dir = 0 }
-		local speed = wind.speed or 0
-		local dir = wind.dir or 0
-		return dir, speed
+	local windToTrue, speedMs = nil, nil
+
+	if abPos and atmosphere and atmosphere.getWind then
+		local ok, v = pcall(atmosphere.getWind,
+			{ x = abPos.x, y = (abPos.y or 0) + 10, z = abPos.z })
+		if ok and v and type(v.x) == "number" and type(v.z) == "number" then
+			speedMs = math.sqrt(v.x * v.x + v.z * v.z)
+			if speedMs > 0.01 then
+				windToTrue = math.deg(math.atan2(v.z, v.x)) % 360
+			else
+				windToTrue = 0
+			end
+		end
 	end
-	return 0, 0
+
+	-- Fallback: static mission weather. The mission file stores the direction
+	-- the wind blows toward, same convention as the velocity vector above.
+	if not windToTrue then
+		local wind = env and env.mission and env.mission.weather
+		             and env.mission.weather.wind and env.mission.weather.wind.atGround
+		if not wind then return 0, 0 end
+		speedMs    = wind.speed or 0
+		windToTrue = (wind.dir or 0) % 360
+	end
+
+	local fromTrue = (windToTrue + 180) % 360
+	local fromMag  = ATC.toMag and ATC.toMag(fromTrue) or fromTrue
+	local dir      = math.floor(fromMag + 0.5) % 360
+	if dir == 0 then dir = 360 end
+	return dir, math.floor(speedMs * 1.94384 + 0.5)
 end
 
 -- Returns the active runway magnetic heading and whether it is the reciprocal.
@@ -33,10 +68,45 @@ function ATC.getActiveRwyHdg(abName)
 	end
 end
 
-function ATC.isRunwayClear(abName)
+-- True when the runway is free for `forUnitName`.
+-- `forUnitName` is optional. The aircraft currently holding the runway
+-- reservation gets `true` for itself, so an aircraft that has just been cleared
+-- to land is not subsequently told its own runway is occupied.
+function ATC.isRunwayClear(abName, forUnitName)
 	local fs = ATC.state and ATC.state.airfields and ATC.state.airfields[abName]
-	if not fs or not fs.rwyClear then return false end
-	return fs.rwyClear
+	if not fs then return false end
+	if fs.rwyClear then return true end
+	return forUnitName ~= nil and fs.rwyOccupiedBy == forUnitName
+end
+
+-- Reserves the runway for a single aircraft. Recorded by name so the holder can
+-- be told the runway is clear for itself and so only the holder can release it.
+function ATC.reserveRunway(abName, unitName)
+	local fs = ATC.getFieldState(abName)
+	if fs.rwyOccupiedBy ~= unitName then
+		ATC.log(string.format("RWY   %s reserved by %s", tostring(abName), tostring(unitName)))
+	end
+	fs.rwyClear      = false
+	fs.rwyOccupiedBy = unitName
+end
+
+-- Releases the runway, but only if `unitName` holds it -- one aircraft's
+-- go-around or rollout must not clear another aircraft's reservation.
+-- Pass unitName = nil to force a release (mission-level cleanup).
+function ATC.releaseRunway(abName, unitName)
+	local fs = ATC.getFieldState(abName)
+	if unitName and fs.rwyOccupiedBy and fs.rwyOccupiedBy ~= unitName then
+		ATC.log(string.format("RWY   %s release by %s DENIED (held by %s)",
+			tostring(abName), tostring(unitName), tostring(fs.rwyOccupiedBy)))
+		return false
+	end
+	if fs.rwyOccupiedBy then
+		ATC.log(string.format("RWY   %s released by %s",
+			tostring(abName), tostring(fs.rwyOccupiedBy)))
+	end
+	fs.rwyClear      = true
+	fs.rwyOccupiedBy = nil
+	return true
 end
 
 function ATC.generateStandardCRPs(arpLat, arpLon, runwayHeading, distanceNM)

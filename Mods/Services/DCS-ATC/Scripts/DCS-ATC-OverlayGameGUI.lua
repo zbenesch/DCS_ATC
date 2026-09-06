@@ -108,9 +108,10 @@ local _curMenu    = nil
 local _prevMenu   = nil
 local _playerName = nil
 
-local _pendingToggle = false
+local _pendingToggle = 0     -- counter: incremented by hotkey, drained in onFrame
 local _pendingSelect = nil
 local _pendingBack   = false
+local _clickZones    = {}    -- [{n, y1, y2}] — populated by _renderMenu for mouse clicks
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 local function _log(msg)
@@ -312,6 +313,7 @@ local function _renderMenu()
     _statics.title:setText(_curMenu.title or "DCS ATC")
     yOff = yOff + TITLE_H
 
+    _clickZones = {}
     for i = 1, 9 do
         local s    = _statics["item" .. i]
         local item = items[i]
@@ -325,6 +327,7 @@ local function _renderMenu()
             end
             s:setBounds(8, yOff, CONT_W, ITEM_H)
             s:setText(label)
+            _clickZones[#_clickZones + 1] = { n = i, y1 = yOff, y2 = yOff + ITEM_H }
             yOff = yOff + ITEM_H
         else
             s:setBounds(0, -200, 0, 0)
@@ -336,16 +339,17 @@ local function _renderMenu()
     local back = _keyLabel(c.key_back)
     local tog  = _keyLabel(c.key_toggle)
     local togAction = _isPinned and "Close" or "Pin"
+    local selHint = (c.topRowSelect ~= false) and "1-9 or Num1-9=Select" or "Num1-9=Select"
     local hint = _prevMenu
-        and (back .. "=Back    " .. tog .. "=" .. togAction)
-        or  ("Num1-9=Select    " .. tog .. "=" .. togAction)
+        and (back .. "/0=Back    " .. tog .. "=" .. togAction)
+        or  (selHint .. "    " .. tog .. "=" .. togAction)
     _statics.hint:setSkin(_skinHint)
     _statics.hint:setBounds(8, yOff + 2, CONT_W, HINT_H)
     _statics.hint:setText(hint)
 
     local boxH = yOff + HINT_H + PAD
-    _box:setBounds(0, 30, WIDTH, boxH)
-    _window:setSize(WIDTH, boxH + 30)
+    _box:setBounds(0, 0, WIDTH, boxH)
+    _window:setSize(WIDTH, boxH)
     _window:setHasCursor(true)
 end
 
@@ -372,6 +376,7 @@ local function _openNow()
     _isOpen   = true
     _isPinned = false
     _log("opened ok, player=" .. tostring(_playerName) .. " items=" .. #_curMenu.items)
+    _window:setVisible(true)   -- re-show if X button hid it
     _box:setVisible(true)
     _window:setHasCursor(true)
     _renderMenu()
@@ -454,24 +459,67 @@ local function _createWindow()
     _skinHint  = pSkins.sHint:getSkin()
 
     local st = Static.new(); _box:insertWidget(st); _statics.title = st
+    local _rowClickOk = true
     for i = 1, 9 do
         local s = Static.new(); _box:insertWidget(s); _statics["item"..i] = s
+        -- Click handler goes on the row itself, not the parent Panel. Static
+        -- inherits Widget and so is mouse-capable: it sits on top of the Panel
+        -- and consumes the 'down' event, which is why the Panel-level handler
+        -- never fired. Binding per row also means no hit-testing -- the widget
+        -- already knows which item it is.
+        local n = i
+        local ok = pcall(s.addMouseDownCallback, s, function()
+            if _isOpen then _pendingSelect = n end
+        end)
+        if not ok then _rowClickOk = false end
+    end
+    if not _rowClickOk then
+        _err("row click handlers failed to attach; use the number keys")
     end
     local sh = Static.new(); _box:insertWidget(sh); _statics.hint = sh
 
     -- ── Register all hotkeys from config ──────────────────────────────────────
     local c = atcOverlay.config
 
-    _addHK(c.key_toggle, function() _pendingToggle = true end,              "toggle")
+    _addHK(c.key_toggle, function() _pendingToggle = _pendingToggle + 1 end, "toggle")
 
+    -- The configured select keys default to NUMPAD ("[1]".."[9]"), but the menu
+    -- renders items as "[1] Contact Tower", so pressing the number row is the
+    -- natural thing to do and nothing happened. Bind the top row as well.
+    --
+    -- Set topRowSelect = false in the config if this steals number-row keys from
+    -- the cockpit (ICP, countermeasure programs): DCS GameGUI hotkeys can consume
+    -- a keypress before the sim sees it, even while the overlay is closed.
+    local topRow = (c.topRowSelect ~= false)
     for i = 1, 9 do
         local n = i
-        _addHK(c["key_"..i],
-            function() if _isOpen then _pendingSelect = n end end,
-            "select "..i)
+        local sel = function() if _isOpen then _pendingSelect = n end end
+        _addHK(c["key_"..i], sel, "select "..i)
+        if topRow then _addHK(tostring(n), sel, "select "..n.." (top row)") end
     end
 
-    _addHK(c.key_back,   function() if _isOpen then _pendingBack   = true end end, "back")
+    local back = function() if _isOpen then _pendingBack = true end end
+    _addHK(c.key_back, back, "back")
+    if topRow then _addHK("0", back, "back (top row)") end
+
+    -- ── Mouse click → select item ─────────────────────────────────────────────
+    -- Logged, because a pcall that silently swallows a missing API is
+    -- indistinguishable from "clicking does not work" at runtime.
+    local _mouseOk, _mouseErr = pcall(_box.addMouseDownCallback, _box, function(_, _, y, _)
+        if not _isOpen then return end
+        for _, zone in ipairs(_clickZones) do
+            if y >= zone.y1 and y < zone.y2 then
+                _pendingSelect = zone.n
+                break
+            end
+        end
+    end)
+    if not _mouseOk then
+        _err("mouse click callback NOT attached (clicking will not select): "
+             .. tostring(_mouseErr))
+    else
+        _log("mouse click callback attached")
+    end
 
     -- ── Position tracking ─────────────────────────────────────────────────────
     _window:addPositionCallback(function()
@@ -498,15 +546,25 @@ end
 
 -- ── Public interface ──────────────────────────────────────────────────────────
 function atcOverlay.onFrame()
-    -- Window creation is done at boot; retry here only if it failed then.
+    -- (Re)create window if it was never made, or if DCS destroyed it (e.g. X button).
     if not _isCreated then
         local ok, err = pcall(_createWindow)
         if not ok then _err("_createWindow failed: " .. tostring(err)) end
         if not _isCreated then return end
+    else
+        -- Health check: if DCS silently destroyed the window object, reset and recreate.
+        local alive = _window ~= nil and pcall(function() _window:getPosition() end)
+        if not alive then
+            _isCreated = false; _window = nil; _box = nil; _statics = {}
+            _skinTitle = nil; _skinItem = nil; _skinSub = nil; _skinHint = nil
+            _isOpen = false; _isPinned = false; _clickZones = {}
+            return  -- will recreate on next frame
+        end
     end
 
-    if _pendingToggle then
-        _pendingToggle = false
+    local toggleCount = _pendingToggle
+    _pendingToggle = 0
+    for _ = 1, toggleCount do
         _log("toggle: _isOpen=" .. tostring(_isOpen) .. " _isPinned=" .. tostring(_isPinned))
         if not _isOpen then
             _openNow()          -- hidden  → floating
@@ -515,8 +573,9 @@ function atcOverlay.onFrame()
         else
             _closeNow()         -- pinned  → hidden
         end
+    end
 
-    elseif _pendingSelect then
+    if _pendingSelect then
         local n = _pendingSelect; _pendingSelect = nil
         _selectNow(n)
 
@@ -530,7 +589,7 @@ function atcOverlay.onSimStop()
     _isCreated = false; _window = nil; _box = nil; _statics = {}
     _skinTitle = nil; _skinItem = nil; _skinSub = nil; _skinHint = nil
     _isOpen = false; _isPinned = false; _curMenu = nil; _prevMenu = nil
-    _pendingToggle = false; _pendingSelect = nil; _pendingBack = false
+    _pendingToggle = 0; _pendingSelect = nil; _pendingBack = false
 end
 
 -- ── Bootstrap ─────────────────────────────────────────────────────────────────
