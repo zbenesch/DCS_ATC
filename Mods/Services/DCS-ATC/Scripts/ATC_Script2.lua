@@ -810,6 +810,9 @@ function ATC.onHandoffToTower(arg)
     rec.towerCheckedIn[airbaseName] = true
     rec.handedOffToTower = rec.handedOffToTower or {}
     rec.handedOffToTower[airbaseName] = true
+    ATC.log(string.format("TOWER %-10s @%s  checked in with tower on %s",
+        tostring(unitName), tostring(airbaseName),
+        towerFreq and string.format("%.3f", towerFreq.mhz) or "?"))
     local ab = Airbase.getByName(airbaseName)
     local abPos = ab and ATC.getAirbasePos(ab)
     ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -861,6 +864,10 @@ function ATC.onRequestLanding(arg)
     local rwyNum = ATC.rwyDesignator(rwyHdg)
     local windDir, windSpd = ATC.getWind(abPos)
     if not ATC.isRunwayClear(airbaseName, unitName) then
+        local fs2 = ATC.state.airfields[airbaseName]
+        ATC.log(string.format("HOLD  %-10s @%s  landing request refused: runway held by %s",
+            tostring(unitName), tostring(airbaseName),
+            tostring(fs2 and fs2.rwyOccupiedBy or "unknown")))
         ATC.radioMsg(rec.groupId, abPos, string.format(
             "%s, %s Tower, runway occupied. Hold present position, standby for landing clearance.",
             cs, fieldName), false, airbaseName, "Tower")
@@ -868,6 +875,12 @@ function ATC.onRequestLanding(arg)
     end
     rec.landingCleared = rec.landingCleared or {}
     rec.landingCleared[airbaseName] = true
+    -- This IS the landing clearance, so mark the final gate satisfied too.
+    -- Without it checkGlideslopes issued a second, near-identical "cleared to
+    -- land" at 2 NM -- about 30 s before touchdown -- and that late one is what
+    -- the pilot hears as the clearance, however early the real one was given.
+    rec.finalCleared = rec.finalCleared or {}
+    rec.finalCleared[airbaseName] = true
     ATC.reserveRunway(airbaseName, unitName)
     ATC.log(string.format("CLEAR %-10s @%s  CLEARED TO LAND rwy %s (wind %03d/%d)",
         tostring(unitName), tostring(airbaseName), tostring(rwyNum), windDir, windSpd))

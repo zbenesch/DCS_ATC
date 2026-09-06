@@ -459,12 +459,18 @@ function ATC.checkGlideslopes()
                                         false, abName, controller)
                                     rec.finalCleared[abName] = true
                                     rec.lastGuidance[abName] = now
+                                    ATC.log(string.format(
+                                        "CLEAR %-10s @%s  cleared to land on short final (%.1f NM)",
+                                        tostring(unitName), tostring(abName), distNM))
                                 else
                                     ATC.radioMsg(rec.groupId, abPos, string.format(
                                         "%s, %s tower, runway occupied, return to pattern and await clearance.",
                                         cs, fieldName),
                                         false, abName, controller)
                                     rec.lastGuidance[abName] = now
+                                    ATC.log(string.format(
+                                        "HOLD  %-10s @%s  sent around at %.1f NM: runway occupied",
+                                        tostring(unitName), tostring(abName), distNM))
                                 end
                             elseif cleared and onFinal and distNM <= 5 and not rec.gearReminded[abName] then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
@@ -475,6 +481,8 @@ function ATC.checkGlideslopes()
                                     false, abName, controller)
                                 rec.gearReminded[abName] = true
                                 rec.lastGuidance[abName] = now
+                                ATC.log(string.format("GEAR  %-10s @%s  gear/speed reminder at %.1f NM (Vref %d kt)",
+                                    tostring(unitName), tostring(abName), distNM, spds.final))
                             elseif cleared and finalLeg and distNM <= 4 and spdKt and spdKt > spds.maxFinal then
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
                                     "%sreduce speed to %d kt.\n"              ..
