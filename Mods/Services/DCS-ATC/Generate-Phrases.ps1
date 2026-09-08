@@ -598,7 +598,59 @@ function Get-AudioDuration([string]$Path) {
             return ([int]$Matches[1] * 3600) + ([int]$Matches[2] * 60) + [double]$Matches[3]
         }
     } catch {}
-    return 0.5
+    # 0, not a plausible-looking guess. This used to return 0.5, which meant an
+    # unreadable or header-only OGG silently acquired a believable duration --
+    # so a clip containing no audio at all was recorded as 0.5 s and scheduled
+    # as half a second of dead air in the sim. Callers must treat 0 as "unusable".
+    return 0
+}
+
+# Converts synthesised audio to the final radio-filtered OGG, and verifies it.
+#
+# The silenceremove at the head of $RadioFilter can swallow an entire clip:
+# ffmpeg still exits 0 and writes a structurally valid but audio-less 3.6 KB
+# file ("audio:0kB"). That is exactly how silent clips reached the sim and were
+# scheduled as dead air. Lowering the threshold does not fix it -- on the clips
+# that trip it, the trim still eats everything at -80 dB -- so instead: convert,
+# check, and fall back to the same chain without the trim.
+#
+# Argument list is an array, not a string: the filter chain is full of commas
+# and colons and must not be re-parsed by the shell.
+function Convert-ToRadioOgg {
+    param([string]$InPath, [string]$OutPath, [string]$Label)
+
+    if ($NoRadioEffect) {
+        $chains = @("")
+    } else {
+        $chains = @($RadioFilter, ($RadioFilter -replace '^silenceremove[^,]*,', ''))
+    }
+
+    for ($i = 0; $i -lt $chains.Count; $i++) {
+        $ffArgs = @('-y', '-i', $InPath)
+        if ($chains[$i] -ne "") { $ffArgs += @('-af', $chains[$i]) }
+        $ffArgs += @('-ar', '44100', '-ac', '1', '-c:a', 'libvorbis', '-q:a', '4', $OutPath)
+
+        $proc = Start-Process -FilePath $FFmpeg -ArgumentList $ffArgs `
+            -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
+            -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
+
+        if ($proc.ExitCode -ne 0) {
+            $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
+            Write-Warning "  FFmpeg failed for '$Label' (exit $($proc.ExitCode)): $errText"
+            return 0
+        }
+
+        $d = Get-AudioDuration $OutPath
+        if ($d -gt 0.05) { return $d }
+
+        if ($i -lt $chains.Count - 1) {
+            Write-Warning "  silence trim removed all audio from '$Label' - retrying without it"
+        }
+    }
+
+    Write-Warning "  '$Label' produced no audio after all attempts"
+    return 0
 }
 
 # -- Helper: call ElevenLabs TTS with retry on rate-limit ------------------
@@ -668,7 +720,9 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
             foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg" | Where-Object { $_.Name -notmatch '\.bak\.ogg$' })) {
                 $key = "$voiceKey/$($ogg.BaseName)"
                 if (-not $durations.ContainsKey($key)) {
-                    $durations[$key] = [Math]::Round((Get-AudioDuration $ogg.FullName), 3)
+                    $d = Get-AudioDuration $ogg.FullName
+                    if ($d -gt 0.05) { $durations[$key] = [Math]::Round($d, 3) }
+                    else { Write-Warning "Unreadable clip, no duration recorded: $key" }
                 }
             }
         }
@@ -684,12 +738,18 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
         $text    = $phrase.Value
         $oggPath = Join-Path $voiceDir "$token.ogg"
 
-        # Skip if OGG already exists and is non-empty (resume support); -Force overrides
+        # Skip only if the existing OGG actually contains audio. A byte-size test
+        # is not enough: a header-only Ogg Vorbis with no audio frames is ~3.6 KB,
+        # comfortably over any sane threshold, so 14 silent clips passed this
+        # check on every run and were never regenerated.
         if (-not $Force -and (Test-Path $oggPath) -and (Get-Item $oggPath).Length -gt 1000) {
             $dur = Get-AudioDuration $oggPath
-            $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
-            $done++
-            continue
+            if ($dur -gt 0.05) {
+                $durations["$voiceKey/$token"] = [Math]::Round($dur, 3)
+                $done++
+                continue
+            }
+            Write-Host ("  empty clip, regenerating: {0}/{1}" -f $voiceKey, $token) -ForegroundColor Yellow
         }
 
         if ($UsePiper) {
@@ -702,21 +762,7 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
                 $done++
                 continue
             }
-            $dur = Get-AudioDuration $wavPath
-            if ($NoRadioEffect) {
-                $afArgs = @('-ar','44100','-ac','1','-c:a','libvorbis','-q:a','4')
-            } else {
-                $afArgs = @('-af',$RadioFilter,'-ar','44100','-ac','1','-c:a','libvorbis','-q:a','4')
-            }
-            $proc = Start-Process -FilePath $FFmpeg `
-                -ArgumentList (@('-y','-i',$wavPath) + $afArgs + @($oggPath)) `
-                -Wait -PassThru -NoNewWindow `
-                -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
-                -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
-            if ($proc.ExitCode -ne 0) {
-                $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
-                Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
-            }
+            $dur = Convert-ToRadioOgg -InPath $wavPath -OutPath $oggPath -Label "$voiceKey/$token"
             Remove-Item $wavPath -Force -ErrorAction SilentlyContinue
         } else {
             # --- ElevenLabs backend: API -> MP3 -> FFmpeg MP3 -> OGG ----------
@@ -728,21 +774,10 @@ foreach ($voiceEntry in $Voices.GetEnumerator()) {
                 $done++
                 continue
             }
-            $dur = Get-AudioDuration $mp3Path
-            if ($NoRadioEffect) {
-                $afArgs = "-ar 44100 -ac 1 -c:a libvorbis -q:a 4"
-            } else {
-                $afArgs = "-af `"$RadioFilter`" -ar 44100 -ac 1 -c:a libvorbis -q:a 4"
-            }
-            $proc = Start-Process -FilePath $FFmpeg `
-                -ArgumentList "-y -i `"$mp3Path`" $afArgs `"$oggPath`"" `
-                -Wait -PassThru -NoNewWindow `
-                -RedirectStandardOutput "$env:TEMP\ffmpeg_stdout.txt" `
-                -RedirectStandardError  "$env:TEMP\ffmpeg_stderr.txt"
-            if ($proc.ExitCode -ne 0) {
-                $errText = Get-Content "$env:TEMP\ffmpeg_stderr.txt" -Raw -ErrorAction SilentlyContinue
-                Write-Warning "  FFmpeg failed for '$voiceKey/$token' (exit $($proc.ExitCode)): $errText"
-            }
+            # Duration comes from the finished OGG, not the source MP3: the
+            # filter chain can change the length, and a trim that eats the clip
+            # must not be recorded as a valid duration.
+            $dur = Convert-ToRadioOgg -InPath $mp3Path -OutPath $oggPath -Label "$voiceKey/$token"
             Remove-Item $mp3Path -Force -ErrorAction SilentlyContinue
             # Small pause to be polite to the API
             Start-Sleep -Milliseconds 150
@@ -766,7 +801,9 @@ foreach ($vk in $Voices.Keys) {
     foreach ($ogg in (Get-ChildItem $vDir -Filter "*.ogg" | Where-Object { $_.Name -notmatch '\.bak\.ogg$' })) {
         $key = "$vk/$($ogg.BaseName)"
         if (-not $durations.ContainsKey($key)) {
-            $durations[$key] = [Math]::Round((Get-AudioDuration $ogg.FullName), 3)
+            $d = Get-AudioDuration $ogg.FullName
+            if ($d -gt 0.05) { $durations[$key] = [Math]::Round($d, 3) }
+            else { Write-Warning "Unreadable clip, no duration recorded: $key" }
         }
     }
 }
