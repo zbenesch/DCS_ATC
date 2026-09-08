@@ -106,13 +106,13 @@ ATC._phraseDur = {
     ["adam/akrotiri-approach"] = 1.21,
     ["adam/akrotiri-tower"] = 1.11,
     ["adam/al"] = 0.46,
-    ["adam/alpha"] = 0.65,
+    ["adam/alpha"] = 0.6,
     ["adam/anapa"] = 0.38,
     ["adam/anapa-approach"] = 0.97,
     ["adam/anapa-tower"] = 0.87,
     ["adam/and"] = 0.51,
     ["adam/approach"] = 0.72,
-    ["adam/are"] = 0.44,
+    ["adam/are"] = 0.46,
     ["adam/at"] = 0.42,
     ["adam/baghdad"] = 0.63,
     ["adam/bagram"] = 0.74,
@@ -169,15 +169,15 @@ ATC._phraseDur = {
     ["adam/dubai-tower"] = 0.99,
     ["adam/dude"] = 0.49,
     ["adam/eagle"] = 0.53,
-    ["adam/east"] = 0.6,
+    ["adam/east"] = 0.55,
     ["adam/echo"] = 0.59,
     ["adam/eight"] = 0.38,
     ["adam/eighteen"] = 0.33,
     ["adam/eighty"] = 0.34,
-    ["adam/eilat"] = 0.65,
+    ["adam/eilat"] = 0.22,
     ["adam/eleven"] = 0.3,
     ["adam/enfield"] = 0.7,
-    ["adam/erbil"] = 0.65,
+    ["adam/erbil"] = 0.56,
     ["adam/established-on-final"] = 1.28,
     ["adam/evreux"] = 0.6,
     ["adam/expect"] = 0.63,
@@ -307,7 +307,7 @@ ATC._phraseDur = {
     ["adam/novorossiysk-approach"] = 1.12,
     ["adam/novorossiysk-tower"] = 1.36,
     ["adam/number"] = 0.53,
-    ["adam/of"] = 0.44,
+    ["adam/of"] = 0.42,
     ["adam/of-adana"] = 0.72,
     ["adam/of-akrotiri"] = 0.96,
     ["adam/of-anapa"] = 0.83,
@@ -359,7 +359,7 @@ ATC._phraseDur = {
     ["adam/quebec"] = 0.58,
     ["adam/radar-contact"] = 1.13,
     ["adam/radar-contact-you-are"] = 2.07,
-    ["adam/ramat"] = 0.65,
+    ["adam/ramat"] = 0.59,
     ["adam/reaper"] = 0.56,
     ["adam/rebel"] = 0.45,
     ["adam/reduce-speed-to"] = 1.31,
@@ -431,7 +431,7 @@ ATC._phraseDur = {
     ["adam/twelve"] = 0.29,
     ["adam/twenty"] = 0.3,
     ["adam/two"] = 0.64,
-    ["adam/uniform"] = 0.78,
+    ["adam/uniform"] = 0.65,
     ["adam/uzi"] = 0.51,
     ["adam/vacate-runway"] = 2.16,
     ["adam/vaziani"] = 0.82,
@@ -471,7 +471,7 @@ ATC._phraseDur = {
     ["alice/akrotiri-approach"] = 1.17,
     ["alice/akrotiri-tower"] = 1.13,
     ["alice/al"] = 0.56,
-    ["alice/alpha"] = 0.5,
+    ["alice/alpha"] = 0.79,
     ["alice/anapa"] = 0.65,
     ["alice/anapa-approach"] = 0.98,
     ["alice/anapa-tower"] = 0.83,
@@ -825,7 +825,7 @@ ATC._phraseDur = {
     ["alice/zulu"] = 0.73,
     ["brad/abbas"] = 0.2,
     ["brad/abeam-the-threshold"] = 1.32,
-    ["brad/abu"] = 0.5,
+    ["brad/abu"] = 0.7,
     ["brad/adana"] = 0.77,
     ["brad/adana-approach"] = 1.14,
     ["brad/adana-tower"] = 1.09,
@@ -835,7 +835,7 @@ ATC._phraseDur = {
     ["brad/akrotiri"] = 1.03,
     ["brad/akrotiri-approach"] = 1.22,
     ["brad/akrotiri-tower"] = 1.19,
-    ["brad/al"] = 0.5,
+    ["brad/al"] = 0.25,
     ["brad/alpha"] = 0.84,
     ["brad/anapa"] = 0.74,
     ["brad/anapa-approach"] = 1.14,
@@ -1068,7 +1068,7 @@ ATC._phraseDur = {
     ["brad/of-sukhumi"] = 0.15,
     ["brad/of-tbilisi"] = 0.97,
     ["brad/of-vaziani"] = 1.07,
-    ["brad/olds"] = 0.5,
+    ["brad/olds"] = 0.79,
     ["brad/on"] = 0.65,
     ["brad/on-base-runway"] = 1.16,
     ["brad/on-downwind"] = 1.09,
@@ -1077,7 +1077,7 @@ ATC._phraseDur = {
     ["brad/oscar"] = 0.83,
     ["brad/out"] = 0.3,
     ["brad/outside-my-airspace"] = 3.16,
-    ["brad/ovda"] = 0.5,
+    ["brad/ovda"] = 0.84,
     ["brad/panther"] = 0.73,
     ["brad/papa"] = 0.84,
     ["brad/pashkovsky"] = 1,
@@ -1179,7 +1179,7 @@ ATC._phraseDur = {
     ["brad/wind"] = 0.68,
     ["brad/wind-calm"] = 0.92,
     ["brad/witch"] = 0.64,
-    ["brad/with"] = 0.5,
+    ["brad/with"] = 0.63,
     ["brad/wolf"] = 0.72,
     ["brad/xray"] = 0.88,
     ["brad/yankee"] = 0.81,
@@ -1204,7 +1204,7 @@ ATC._phraseDur = {
     ["daniel/anapa"] = 0.7,
     ["daniel/anapa-approach"] = 1.08,
     ["daniel/anapa-tower"] = 0.89,
-    ["daniel/and"] = 0.5,
+    ["daniel/and"] = 0.74,
     ["daniel/approach"] = 0.78,
     ["daniel/are"] = 0.7,
     ["daniel/at"] = 0.5,
@@ -1434,7 +1434,7 @@ ATC._phraseDur = {
     ["daniel/of-tbilisi"] = 0.88,
     ["daniel/of-vaziani"] = 1.07,
     ["daniel/olds"] = 0.68,
-    ["daniel/on"] = 0.5,
+    ["daniel/on"] = 0.53,
     ["daniel/on-base-runway"] = 1.55,
     ["daniel/on-downwind"] = 1.07,
     ["daniel/one"] = 0.18,
@@ -1559,7 +1559,7 @@ ATC._phraseDur = {
     ["david/adana-approach"] = 1.03,
     ["david/adana-tower"] = 0.94,
     ["david/adler"] = 0.79,
-    ["david/ain"] = 0.5,
+    ["david/ain"] = 0.68,
     ["david/airspeed-critically-low"] = 1.17,
     ["david/akrotiri"] = 0.87,
     ["david/akrotiri-approach"] = 1.18,
@@ -1764,7 +1764,7 @@ ATC._phraseDur = {
     ["david/novorossiysk"] = 0.85,
     ["david/novorossiysk-approach"] = 1.2,
     ["david/novorossiysk-tower"] = 1.08,
-    ["david/number"] = 0.5,
+    ["david/number"] = 0.7,
     ["david/of"] = 0.6,
     ["david/of-adana"] = 0.8,
     ["david/of-akrotiri"] = 1.11,
@@ -1798,7 +1798,7 @@ ATC._phraseDur = {
     ["david/of-tbilisi"] = 0.89,
     ["david/of-vaziani"] = 1.03,
     ["david/olds"] = 0.74,
-    ["david/on"] = 0.5,
+    ["david/on"] = 0.74,
     ["david/on-base-runway"] = 1.07,
     ["david/on-downwind"] = 0.87,
     ["david/one"] = 0.18,
@@ -3045,6 +3045,15 @@ ATC.config = {
     finalCorridorNM  = 1.5,  -- max lateral offset from the extended centreline
     finalHdgTolDeg   = 25,   -- max track error from the final approach course
     finalMaxClimbMs  = 3,    -- above this climb rate it is a go-around, not an approach
+    locFullScaleDeg  = 2.5,  -- one band of lateral deviation, in degrees off the
+                             -- extended centreline (ILS localiser full scale)
+    -- Long-landing go-around: still airborne this far down the runway means the
+    -- landing has been missed. Real stabilised-approach criteria use the first
+    -- third (or 3000 ft); half is the more forgiving choice for a sim.
+    -- Needs rwy.rwy, which only some airfields define -- elsewhere it is skipped.
+    missedApproachFrac      = 0.5,
+    missedApproachMaxAglFt  = 200,  -- above this it is an overflight, not a landing
+    runwayCorridorM         = 120,  -- lateral offset that still counts as over the runway
     cp5MinCaptureNM  = 1.5,  -- floor for the CP5 capture radius; the value in the
                              -- airfield files is a chart annotation and is far too
                              -- tight to fly to with a periodically-refreshed vector
@@ -3254,6 +3263,19 @@ local function getVoiceDuration(text, abName, controller)
     local tokens = ATC.textToTokens(text)
     -- On-screen text should outlast the audio slightly, and never flash by.
     return math.max(phraseTotal(tokens, voice) + #tokens * 0.01, 2.0)
+end
+
+-- Real stitched length of a message, for callers that need to schedule
+-- something to start after it has finished speaking.
+--
+-- ATC.ttsDuration is a words-per-second guess and under-runs badly on long
+-- transmissions -- the CP5 handoff is ~25 tokens, which it estimates at 9 s
+-- against roughly 15 s of actual audio. Anything scheduled off that estimate
+-- starts while the previous message is still playing.
+function ATC.voiceDuration(text, abName, controller)
+    local ok, d = pcall(getVoiceDuration, text, abName, controller)
+    if ok and type(d) == "number" and d > 0 then return d end
+    return ATC.ttsDuration(text)
 end
 local function sendRadioVoice(groupId, abPos, text, abName, controller, dur)
     if not abPos or not abName or not controller then return end

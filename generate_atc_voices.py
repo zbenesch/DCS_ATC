@@ -2,8 +2,12 @@ import os
 import requests
 import time
 
-# User-provided ElevenLabs API token (keep private!)
-ELEVENLABS_API_KEY = "sk_f7e528180870dcc51c01513be47e60a88926a6a5cee574a5"
+# ElevenLabs API token, read from the environment -- never hardcode it here.
+# A key committed to this line sat in the public repo for six months.
+#   PowerShell:  [Environment]::SetEnvironmentVariable('ELEVENLABS_API_KEY','sk_...','User')
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+if not ELEVENLABS_API_KEY:
+    raise SystemExit("ELEVENLABS_API_KEY is not set in the environment.")
 
 # Voice IDs for each controller
 VOICE_IDS = {

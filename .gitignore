@@ -4,3 +4,8 @@
 # Scratch / temp
 *.tmp
 *.wav
+
+# Machine-local tool config. Permission allowlists record the literal command
+# that was approved, so anything passed as a flag -- an API key, for instance --
+# ends up stored here verbatim. Keep it out of the repo.
+.claude/settings.local.json

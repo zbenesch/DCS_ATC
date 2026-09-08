@@ -307,6 +307,43 @@ local function isEstablishedOnFinal(unit, abPos, rwy, abName, distNM)
     return true
 end
 
+-- Where an aircraft is along the landing runway.
+--
+-- Returns (alongM, lengthM, lateralM), all metres, measured from the threshold
+-- the aircraft is landing over -- so alongM < 0 is short of the threshold,
+-- 0..lengthM is over the runway, and > lengthM is past the far end. lateralM is
+-- the perpendicular offset from the centreline.
+--
+-- Derived from the rwy polygon by projecting its corners onto the active
+-- landing heading, so it follows whichever end is in use. Returns nil for the
+-- 26 of 46 airfields that have no polygon; callers must degrade quietly.
+local function runwayProgress(uPos, rwy, abName)
+    local poly = rwy and rwy.rwy
+    if not poly or #poly < 4 or not uPos then return nil end
+    local landingTrue = ATC.toTrue(ATC.getActiveRwyHdg(abName) or rwy.hdg or 0)
+    local rad = math.rad(landingTrue)
+    local ux, uz = math.cos(rad), math.sin(rad)
+
+    local cx, cz, n = 0, 0, 0
+    for _, v in ipairs(poly) do
+        if v.x and v.y then cx, cz, n = cx + v.x, cz + v.y, n + 1 end
+    end
+    if n < 4 then return nil end
+    cx, cz = cx / n, cz / n
+
+    local tmin, tmax = math.huge, -math.huge
+    for _, v in ipairs(poly) do
+        local t = (v.x - cx) * ux + (v.y - cz) * uz
+        if t < tmin then tmin = t end
+        if t > tmax then tmax = t end
+    end
+
+    local dx, dz = uPos.x - cx, uPos.z - cz
+    local along   = (dx * ux + dz * uz) - tmin
+    local lateral = math.abs(-dx * uz + dz * ux)
+    return along, (tmax - tmin), lateral
+end
+
 function ATC.checkGlideslopes()
     local now = timer.getTime()
     local autoVacate = {}   -- collect here; fire after loops to avoid mutating landingSeq mid-iteration
@@ -362,10 +399,13 @@ function ATC.checkGlideslopes()
                                and not rec.handedOffToTower[abName] then
                                 local towerFreq = rwy and rwy.frequencies and rwy.frequencies.tower
                                 local freqStr = towerFreq and (towerFreq.mhz .. " MHz") or "Tower frequency"
+                                local landingMag = ATC.getActiveRwyHdg(abName) or (rwy and rwy.hdg) or 0
                                 ATC.radioMsg(rec.groupId, abPos, string.format(
-                                    "%sContact %s Tower on %s.\n" ..
-                                    "%.1f NM from threshold.",
-                                    controllerCall(unitName, abName, "Approach"), fieldName, freqStr, distNM),
+                                    "%sTurn final heading %s, runway %s.\n" ..
+                                    "Contact %s Tower on %s.  %.1f NM from threshold.",
+                                    controllerCall(unitName, abName, "Approach"),
+                                    ATC.fmtHdg(landingMag), ATC.rwyDesignator(landingMag),
+                                    fieldName, freqStr, distNM),
                                     false, abName, "Approach")
                                 rec.handedOffToTower[abName] = true
                                 -- Open the tower dialogue so the pilot can actually request
@@ -381,6 +421,48 @@ function ATC.checkGlideslopes()
                                 ATC.buildFullMenu(unitName)
                             end
                         local cleared = rec.landingCleared and rec.landingCleared[abName]
+                        -- Approach monitoring must stop at touchdown. Every deviation
+                        -- below is measured against an approach profile, so a perfectly
+                        -- normal rollout reads as a gross deviation: speedDev is
+                        -- (spd - Vref) / 10% of Vref, which at 60 kt against a Vref of
+                        -- 130 is -5.4 and trips the go-around threshold of 3.0. That is
+                        -- what produced "Missed approach, go around!" three seconds
+                        -- after landing. inAir() alone is not enough -- it flickers on
+                        -- rollout -- so height is checked too.
+                        local landed = (ph == "landing")
+                            or ((not unit:inAir()) and (ATC.getAltAglFt(unit) or 9999) < 50)
+                        -- Position along the landing runway, when the field defines one.
+                        local rwyAlong, rwyLen, rwyLateral = runwayProgress(unit:getPoint(), rwy, abName)
+                        local overRunway = rwyAlong and rwyLen
+                            and rwyAlong > 0 and rwyAlong < rwyLen
+                            and rwyLateral <= (ATC.config.runwayCorridorM or 120)
+
+                        -- A missed approach proper: still flying past the touchdown zone.
+                        -- This is a different thing from an unstabilised approach -- that
+                        -- is judged before the threshold, this is judged on the runway --
+                        -- and it is the rule that was missing entirely.
+                        if cleared and not landed and overRunway and unit:inAir() then
+                            local aglNow = ATC.getAltAglFt(unit) or 9999
+                            local frac   = rwyAlong / rwyLen
+                            rec.lastGoAround = rec.lastGoAround or {}
+                            local lastGa = rec.lastGoAround[abName] or 0
+                            if aglNow <= (ATC.config.missedApproachMaxAglFt or 200)
+                               and frac >= (ATC.config.missedApproachFrac or 0.5)
+                               and (now - lastGa) >= 90 then
+                                ATC.radioMsg(rec.groupId, abPos, string.format(
+                                    "%smissed approach, go around!\n" ..
+                                    "Not down by mid-field.  Climb runway heading.",
+                                    controllerCall(unitName, abName, "Tower")),
+                                    true, abName, "Tower")
+                                ATC.log(string.format(
+                                    "GOARND %-10s @%s  LONG LANDING: %.0f m down a %.0f m runway (%.0f%%) at %d ft AGL",
+                                    tostring(unitName), tostring(abName),
+                                    rwyAlong, rwyLen, frac * 100, aglNow))
+                                rec.lastGoAround[abName] = now
+                                ATC.setPhase(unitName, abName, "goaround")
+                                rec.lastGuidance[abName] = now
+                            end
+                        end
                         -- Low-speed go-around call.
                         --
                         -- unit:inAir() flickers during rollout and on a bounce, which
@@ -414,8 +496,8 @@ function ATC.checkGlideslopes()
                             rec.lastGoAround[abName] = now
                             ATC.setPhase(unitName, abName, "goaround")
                             rec.lastGuidance[abName] = now
-                        elseif ph ~= "goaround" and cleared and finalLeg and distNM <= 2
-                               and spdKt and spds and spdKt > spds.maxFinal then
+                        elseif ph ~= "goaround" and not landed and cleared and finalLeg
+                               and distNM <= 2 and spdKt and spds and spdKt > spds.maxFinal then
                             rec.lastGoAround = rec.lastGoAround or {}
                             local lastGa = rec.lastGoAround[abName] or 0
                             if (now - lastGa) >= 90 then
@@ -430,12 +512,53 @@ function ATC.checkGlideslopes()
                                 rec.lastGuidance[abName] = now
                             end
                         elseif ph ~= "goaround" and (now - lastT) >= ATC.config.guidanceInterval then
-                            if cleared and onFinal and distNM <= (ATC.config.gsMonitorNM or 5) then
+                            -- Stability check, so it stops at the threshold: once the
+                            -- aircraft is over the runway the approach is over and the
+                            -- long-landing rule above takes it from there. Judging an
+                            -- approach profile during the flare is what called a missed
+                            -- approach on an aircraft that had already touched down.
+                            -- Gated on establishedFinal, NOT onFinal. onFinal is the wide
+                            -- +/-30 degree sector, which an aircraft turning final from CP5
+                            -- satisfies while it is still intercepting -- and CP5 itself sits
+                            -- 2.49 NM off the extended centreline at Batumi. Judging
+                            -- alignment there produced a missed approach at 3.3 NM with the
+                            -- localiser term at 5.53 while altitude and speed were both fine.
+                            -- Stability is only meaningful once actually established.
+                            if cleared and establishedFinal and not landed and not overRunway
+                               and distNM <= (ATC.config.gsMonitorNM or 5) then
                                 local gs = ATC.getGlideslope(unit, abPos, rwy)
                                 local speedDev = math.abs(gs.speedDev or 0)
                                 local aoaDev = math.abs(gs.aoaDev or 0)
                                 local altDev = math.abs(gs.altDev or 0)
-                                local maxDev = math.max(speedDev, aoaDev, altDev)
+                                -- Alignment, localiser style: angular offset from the
+                                -- extended centreline, so the tolerance tightens naturally
+                                -- as the threshold approaches.
+                                --
+                                -- This is deliberately a POSITION measure, and the track
+                                -- test in isEstablishedOnFinal uses getVelocity, which is
+                                -- track over the ground. Neither looks at the nose. In a
+                                -- crosswind a competent pilot crabs -- nose off the
+                                -- centreline by the drift angle, track and position dead
+                                -- on -- so judging heading would call a go-around on good
+                                -- technique while missing a pilot who is genuinely
+                                -- drifting off. Until now there was no alignment term at
+                                -- all, so drifting off the centreline was not caught.
+                                local locDev = 0
+                                if rwyAlong and rwyLateral and rwyAlong < 0 then
+                                    local toThrM = math.max(-rwyAlong, 150)
+                                    locDev = math.deg(math.atan2(rwyLateral, toThrM))
+                                             / (ATC.config.locFullScaleDeg or 2.5)
+                                end
+                                -- Lateral deviation is ADVISORY ONLY, never a go-around.
+                                -- Being off the centreline is a correctable condition -- a
+                                -- controller says "you are right of centreline, correct
+                                -- left", not "go around" -- and the angular measure
+                                -- disagrees with the 1.5 NM corridor that establishedFinal
+                                -- uses: 1.5 NM at 3 NM is 26 degrees, which reads as 10
+                                -- bands here. Letting it force a go-around produced exactly
+                                -- that false call. Altitude and speed remain the hard gates.
+                                local maxDev   = math.max(speedDev, aoaDev, altDev)
+                                local adviseDev = math.max(maxDev, math.abs(locDev))
                                 if maxDev > (ATC.config.gsGoAroundDev or 3.0) then
                                     rec.lastGoAround = rec.lastGoAround or {}
                                     local lastGa = rec.lastGoAround[abName] or 0
@@ -444,10 +567,17 @@ function ATC.checkGlideslopes()
                                         rec.lastGoAround[abName] = now
                                         ATC.setPhase(unitName, abName, "goaround")
                                         rec.lastGuidance[abName] = now
+                                        ATC.log(string.format(
+                                            "GOARND %-10s @%s  UNSTABILISED at %.1f NM: alt %.2f, speed %.2f, loc %.2f (limit %.1f)",
+                                            tostring(unitName), tostring(abName), distNM,
+                                            altDev, speedDev, locDev, ATC.config.gsGoAroundDev or 3.0))
                                     end
-                                elseif maxDev > (ATC.config.gsAdviseDev or 1.5) then
+                                elseif adviseDev > (ATC.config.gsAdviseDev or 1.5) then
                                     ATC.radioMsg(rec.groupId, abPos, "Correct your approach: deviation from glideslope.", false, abName, controller)
                                     rec.lastGuidance[abName] = now
+                                    ATC.log(string.format(
+                                        "DEV   %-10s @%s  correct approach at %.1f NM: alt %.2f, speed %.2f, loc %.2f",
+                                        tostring(unitName), tostring(abName), distNM, altDev, speedDev, locDev))
                                 end
                             end
                             if cleared and onFinal and distNM <= 2 and not rec.finalCleared[abName] then
@@ -1055,12 +1185,18 @@ local function advancePatternCorner(unitName, rec, unit, abName, now, rwy, corne
         local finalMagHdg = ATC.fmtHdg(ATC.toMag(inboundHdg))
         rec.handedOffToTower = rec.handedOffToTower or {}
         if not rec.handedOffToTower[abName] then
+            -- Name the runway alongside the heading. Every other transmission is
+            -- "turn heading X" for a vector to a corner, so without the runway
+            -- the pilot has no way to tell that this one is the final approach
+            -- course rather than one more leg.
             local finalText = string.format(
-                "%sTurn final heading %s, maintain %d ft. Contact %s Tower on %s. Report final.",
-                controllerCall(unitName, abName, "Approach"), finalMagHdg, finalGate.altFt, spokenField, freqStr)
+                "%sTurn final heading %s, runway %s, maintain %d ft. Contact %s Tower on %s. Report final.",
+                controllerCall(unitName, abName, "Approach"), finalMagHdg,
+                ATC.rwyDesignator(ATC.getActiveRwyHdg(abName) or rwy.hdg),
+                finalGate.altFt, spokenField, freqStr)
             ATC.radioMsg(rec.groupId, abPos, finalText, false, abName, "Approach")
             -- Delay the goodbye until the final message has finished playing
-            local finalDur = ATC.ttsDuration(finalText)
+            local finalDur = ATC.voiceDuration(finalText, abName, "Approach")
             local goodbyeText = string.format("%s, switching to %s Tower, have a great day.", cs, spokenField)
             local p = { groupId = rec.groupId, text = goodbyeText, abName = abName }
             timer.scheduleFunction(function(arg)
